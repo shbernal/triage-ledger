@@ -42,7 +42,7 @@
     "yaml": "^2.5.0"
   },
   "scripts": {
-    "test": "node --test \"test/**/*.test.mjs\"",
+    "test": "node --test",
     "validate:templates": "node src/cli.mjs validate --ledger templates/backlog.yml && node src/cli.mjs validate --ledger templates/fork-triage.yml"
   }
 }

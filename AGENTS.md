@@ -65,5 +65,11 @@ it. A rule with no branches cannot be got wrong at entry 900.
 - Tests run on Windows as well as Linux. This is not optional: the known defects in the
   prior art are a literal `&` corrupting a write, and `gh` emitting CRLF that reaches a
   `summary:` value where it is invisible in a diff. Linux-only CI catches neither.
+- `npm test` is bare `node --test`, with no path and no glob. The runner only expands
+  globs after Node 20, and `engines` declares 20 — so `node --test "test/**/*.test.mjs"`
+  fails at the floor we claim to support, on both platforms. An explicit file list would
+  work, and would let a new test file be added and silently never run. The cost of the
+  bare form is that everything under `test/` is discovered, so `fixtures.mjs` reports as
+  one empty passing test. That is the cheaper mistake.
 - `plan/` is gitignored scratch and is not documentation. Do not cite it from a
   deliverable, do not promote it to `docs/`, and do not un-ignore it.
