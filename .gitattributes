@@ -1,0 +1,13 @@
+# Every file in this repository is LF in the working tree, on every platform.
+#
+# Load-bearing, not housekeeping, and the reason is this project's own subject matter.
+# Tests assert against fixture text with literal \n in it, and the ledger's line-ending
+# handling is itself under test. With a Windows checkout converting to CRLF, those
+# assertions would compare LF needles against CRLF haystacks and fail on the first
+# Windows CI run — a platform-dependent test result, in a repo whose stated rule is that
+# tests must run on Windows as well as Linux.
+#
+# CRLF is still exercised, deliberately and in memory: the fixtures build a CRLF document
+# at runtime, because that is how `gh` output actually arrives. What must not vary is the
+# bytes on disk.
+* text=auto eol=lf
