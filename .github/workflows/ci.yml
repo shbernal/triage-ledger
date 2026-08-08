@@ -22,8 +22,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         # The floor declared in `engines`, and current. The floor is the one that matters:
-        # it is what an adopter running `npx` on an old LTS actually gets.
-        node: ['20', '24']
+        # it is what an adopter running `npx` on an old LTS actually gets — and it has
+        # already earned its place here by failing while `24` stayed green.
+        node: ['22', '24']
 
     steps:
       - uses: actions/checkout@v5

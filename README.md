@@ -1,5 +1,7 @@
 # triage-ledger
 
+[![CI](https://github.com/shbernal/triage-ledger/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/shbernal/triage-ledger/actions/workflows/ci.yml)
+
 **A backlog designed to end.**
 
 You have a pile of work nobody has decided about — inherited from an abandoned upstream,
@@ -76,8 +78,8 @@ apply to a fork of an abandoned renderer and to a solo project's `TODO.md` alike
 
 ## Nothing enters your dependency tree
 
-The CLI runs via `npx`, pinned to a compatible range. The skill installs and removes with one command
-each. There is no package to add, no lockfile churn, and nothing to uninstall beyond a
+The CLI runs via `npx` on Node 22 or newer, pinned to a compatible range. The skill installs
+and removes with one command each. There is no package to add, no lockfile churn, and nothing to uninstall beyond a
 line in CI — because a tool designed to be deleted should be easy to delete. The full
 integration surface is five items, and it doubles as the removal checklist (`SPEC.md` §6).
 
