@@ -1,0 +1,18 @@
+# The ephemeral plan directory — scratch deliberation, not documentation.
+#
+# This entry is load-bearing, not housekeeping. This repository is public; plan/ holds
+# half-formed arguments, rejected designs and working notes that the deliverables
+# deliberately do not make. It used to be uncommittable by construction (it lived outside
+# any repo); moving it here destroyed that guarantee and this line is what replaces it.
+#
+# Do not remove this to "share the design docs." The exit for plan/ is to distil it into
+# SPEC.md, docs/ and the skill, and then delete it. See plan/00-INDEX.md.
+plan/
+
+node_modules/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+coverage/

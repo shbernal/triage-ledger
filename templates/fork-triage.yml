@@ -1,0 +1,215 @@
+# A triage ledger for an inherited backlog — a backlog designed to end.
+#
+# Written by `triage-ledger init --profile fork-triage`. See SPEC.md:
+# https://github.com/shbernal/triage-ledger
+#
+# This profile is a WORKED EXAMPLE of SPEC.md §7, not a privileged case. Everything here
+# is ordinary ledger data that you could have written by hand, and you are expected to
+# edit it — a vocabulary you did not think about is one you will not apply consistently.
+# In particular: every `retire_to` below points at a document in YOUR repository, and
+# those paths are guesses. Fix them before you seed.
+#
+# Comments in this file are load-bearing: `describes` holds the criterion, comments hold
+# the history of why the vocabulary looks like this. Any tool that rewrites this file
+# must preserve them.
+
+schema: 1
+
+purpose: >
+  REPLACE ME. Records what this project will and will not carry from the backlog it
+  inherited, and drains that pile to empty. It is not an issue tracker and not a
+  permanent backlog; new work this project chooses to do belongs wherever this project
+  already tracks work.
+
+# Two external kinds and one local one. `id_prefix` plus a numeric `source` means the
+# validator can catch the copy-paste error that happens during bulk seeding and nowhere
+# else: if the id ends in 412, the source must too.
+source_kinds:
+  - type: issue
+    source_pattern: '^[\w.-]+/[\w.-]+#\d+$'
+    id_prefix: upstream-issue-
+  - type: pull-request
+    source_pattern: '^[\w.-]+/[\w.-]+#\d+$'
+    id_prefix: upstream-pr-
+  - type: todo
+    # A local kind: no pattern, so `source` may be any string, e.g. `local`.
+
+# `upstream:` is written by the seeding step, not by `init`, because it records what a
+# specific import actually did. It is REQUIRED once entries carry upstream provenance,
+# and `filter` MUST be the exact predicate applied, not a description of it — six months
+# from now a reader has to be able to tell "we triaged this backlog" from "we triaged the
+# last three years of it", and nothing else in the file records that.
+#
+# upstream:
+#   repo: owner/repo
+#   imported_at: 1970-01-01
+#   filter: 'updated_at >= 1967-01-01'
+#   matched: 337
+#   skipped: 714
+#   total_open: 1051
+
+vocabulary:
+  # Every constrained value this ledger uses is declared here. A value that is not
+  # declared is an ERROR, not a new value. If nothing fits, add it here in the same edit
+  # and say why — extending the vocabulary on purpose is fine; drifting off it by typo is
+  # not, and neither is minting the third reason that means "we don't want it".
+
+  # STATUSES. Names are yours. `class` is one of the five in SPEC.md §2 and is normative:
+  # untriaged / parked / dismissed / accepted / done.
+  statuses:
+    - status: needs-triage
+      class: untriaged
+    - status: needs-repro
+      class: parked
+      describes: >
+        We intend to try to reproduce this. Class `parked`, so it blocks retirement —
+        "we will look" is an outstanding obligation. Distinct from the dismissal reason
+        stale-no-repro, where nobody tried and nothing has moved: same two words,
+        opposite ends of the lifecycle.
+    - status: deferred
+      class: parked
+      describes: Not now. Routine review may re-raise it on its own.
+    - status: on-hold
+      class: parked
+      describes: >
+        Owner-gated parking. MUST NOT be re-raised until green-lit — that is the whole
+        distinction from deferred, and the whole point of the status.
+    - status: non-target
+      class: dismissed
+    - status: accepted
+      class: accepted
+      describes: Decided for, not started. All of the work is outstanding.
+    - status: partially-implemented
+      class: accepted        # work outstanding — which is why it must not prune
+      describes: >
+        Decided for, and started. Class `accepted` rather than `done` because
+        `next_action` still names something real, which is what stops it being pruned.
+    - status: implemented
+      class: done
+      describes: The work was done here. `evidence.local_files` names what changed.
+    - status: superseded
+      class: done
+      requires: [superseded_by]   # a per-status extra field, instead of a sixth class
+      describes: >
+        Finished, but by something else — nothing was implemented for this entry
+        specifically. Distinct from implemented, which is why it owes a pointer.
+
+  # DISMISSAL REASONS. Dismissal is the majority operation in a drain, so these are the
+  # entries that hundreds of items get sorted against and that one distilled sentence is
+  # later written from. Each `describes` aims at a BOUNDARY — "distinct from X, because
+  # Y" — not a definition.
+  #
+  # `about` constrains `retire_to`. A reason about the incoming item's own state may
+  # evaporate into git history; a reason encoding YOUR project's policy may not, because
+  # policy reasons are exactly the ones a future contributor will re-litigate.
+  non_target_reasons:
+    - reason: out-of-project-scope
+      describes: >
+        The capability itself is not something this project intends to provide.
+        Distinct from composition-belongs-downstream, which dismisses only where a
+        capability is assembled, not whether it exists.
+      about: project-policy
+      retire_to: docs/project-target.md
+
+    - reason: composition-belongs-downstream
+      describes: >
+        The capability is in scope, but assembling it belongs to the consumer. This
+        project's obligation is that the primitives being composed exist and are sound.
+        Distinct from out-of-project-scope, which dismisses the capability itself.
+      about: project-policy
+      retire_to: docs/project-target.md
+
+    - reason: dropped-platform-target
+      describes: >
+        The ask depends on a runtime, module format or platform this project has
+        dropped. Distinct from out-of-project-scope: we would want the behaviour, we
+        will not carry the platform.
+      about: project-policy
+      retire_to: docs/project-target.md
+
+    - reason: upstream-architecture
+      describes: >
+        The ask only makes sense against an internal design this project replaced.
+        Distinct from superseded-upstream, which is about the item already being
+        resolved rather than about our having diverged.
+      about: project-policy
+      retire_to: docs/architecture.md
+
+    - reason: not-reproducible
+      describes: >
+        We attempted a reproduction against current code and the reported behaviour did
+        not occur. Distinct from stale-no-repro, where nobody attempted one.
+      about: item-state
+      retire_to: null            # evaporates; git history is enough
+      # Reading the code and concluding it should work is not evidence that it does.
+      requires_evidence: [repro]
+
+    - reason: stale-no-repro
+      describes: >
+        No reproduction was ever provided and nothing has moved since the import window.
+        Nobody tried — that is the difference from not-reproducible, and it is why this
+        one demands no evidence.
+      about: item-state
+      retire_to: null            # evaporates; git history is enough
+
+    - reason: superseded-upstream
+      describes: >
+        Resolved upstream before it was abandoned, or superseded by a later change this
+        project already carries.
+      about: item-state
+      retire_to: null            # evaporates; git history is enough
+
+  # EVIDENCE KINDS. Nothing reaches class `accepted` without at least one. Grouped, and
+  # the groups matter: reading a spec and running the thing are different claims, and a
+  # reason may demand the second (see requires_evidence above).
+  evidence_kinds:
+    # Source / spec reading
+    - kind: source-read
+      describes: Read the relevant source in this repository and cited the files.
+    - kind: upstream-read
+      describes: Read the upstream implementation or its history.
+    - kind: spec-ref
+      describes: Cited an external specification or reference document.
+    # Reproduction artifacts
+    - kind: repro
+      describes: Ran a reproduction, or established that the behaviour does not reproduce.
+    - kind: artifact
+      describes: Produced a file, capture or output that demonstrates the behaviour.
+    # Automated tests
+    - kind: test
+      describes: An automated test in this repository demonstrates the behaviour.
+    # Verification against a real consumer of the output
+    - kind: render-check
+      describes: >
+        Verified against the real target that consumes this project's output, not
+        against our own model of it.
+
+  # PROJECT-DECLARED ENTRY FIELDS. Fields beyond the core set, declared here so the
+  # format constrains their values without any tool having to know what they mean.
+  fields:
+    - field: upstream_patch
+      describes: >
+        Whether an inherited diff still applies to this project's base branch. Recorded
+        as a value rather than as prose so it can be filtered and counted.
+      values: [applies, conflicts, obsolete, not-assessed]
+      types: [pull-request]
+      required_when_triaged: true
+      # Correct one intuition before using this: on a genuinely abandoned project MOST
+      # inherited patches still apply. The base branch is frozen, so nothing drifted out
+      # from under them; deadness there comes from nobody merging, not from conflict. So
+      # this field usually decides nothing — a patch that applies is not thereby wanted,
+      # and it still has to earn acceptance on the same evidence as anything else.
+      # Where the source exposes mergeability, seeding may set this mechanically, which
+      # removes `not-assessed` as the universal starting value for the entry type whose
+      # triage is most expensive.
+
+    # Imported labels land in a field like this one. The seeding step declares them in
+    # the same write that first uses them — 12 label names is 12 lines of YAML, and the
+    # alternative punches the one real invariant this format has.
+    #
+    # - field: tags
+    #   describes: Labels carried across from the upstream tracker, verbatim.
+    #   values: []   # the seed fills this in
+
+# An empty list is not an unfinished ledger — it is retirement.
+items: []

@@ -1,0 +1,170 @@
+# A triage ledger — a backlog designed to end.
+#
+# Written by `triage-ledger init`. See SPEC.md: https://github.com/shbernal/triage-ledger
+#
+# Fill in the vocabulary BEFORE you seed this file. Deciding what you will and will not
+# carry before you have seen the 400 specific things is the difference between a policy
+# and 400 case-by-case rationalizations. It is also the only moment when declaring a
+# `retire_to` destination is an honest design act rather than a chore.
+#
+# Comments in this file are load-bearing: `describes` holds the criterion, comments hold
+# the history of why the vocabulary looks like this. Any tool that rewrites this file
+# must preserve them.
+
+schema: 1
+
+purpose: >
+  REPLACE ME. What this ledger is for, and what it is not. One or two sentences.
+  Name the pile it exists to drain, so a reader in six months knows what "empty" meant.
+
+# Every entry has a `type`, and every type is declared here. A kind with no
+# `source_pattern` is a LOCAL kind — work that came from nowhere but your own head.
+# Add an external kind (with a pattern, and an `id_prefix`) if you seed from an issue
+# tracker; `init --profile fork-triage` writes those for you.
+source_kinds:
+  - type: todo
+    # No source_pattern: `source` may be any string, e.g. `local`.
+
+vocabulary:
+  # Every constrained value this ledger uses is declared under `vocabulary:`. A value
+  # that is not declared is an ERROR, not a new value — that invariant is what makes a
+  # typo a typo instead of a silently invented category. If nothing fits, add the value
+  # here in the same edit, and say why.
+
+  # STATUSES. The names are yours; rename freely. The `class` is not — it is one of the
+  # five in SPEC.md §2, and the spec is normative about classes because a class is a
+  # statement about the lifecycle: what is still owed, and what is finished.
+  #
+  #   untriaged  not decided                        blocks retirement
+  #   parked     decided to decide later            blocks retirement
+  #   dismissed  decided against                    terminal
+  #   accepted   decided for; work outstanding      blocks retirement
+  #   done       finished the work                  terminal
+  #
+  # You may name as many statuses as you like against these five. What you may not do is
+  # invent a lifecycle with no class for one of them. There is no honest ledger in which
+  # "decided against" cannot happen.
+  statuses:
+    - status: needs-triage
+      class: untriaged
+    - status: deferred
+      class: parked
+      describes: Not now. Routine review may re-raise it on its own.
+    - status: on-hold
+      class: parked
+      describes: >
+        Owner-gated parking. MUST NOT be re-raised until green-lit — that is the whole
+        distinction from deferred, and the whole point of the status.
+    - status: non-target
+      class: dismissed
+    - status: accepted
+      class: accepted
+      describes: Decided for, not started. All of the work is outstanding.
+    - status: partially-implemented
+      class: accepted        # work outstanding — which is why it must not prune
+      describes: >
+        Decided for, and started. Class `accepted` rather than `done` because
+        `next_action` still names something real, which is what stops it being pruned.
+    - status: implemented
+      class: done
+      describes: The work was done here. `evidence.local_files` names what changed.
+    - status: superseded
+      class: done
+      requires: [superseded_by]   # a per-status extra field, instead of a sixth class
+      describes: >
+        Finished, but by something else — nothing was implemented for this entry
+        specifically. Distinct from implemented, which is why it owes a pointer.
+
+  # DISMISSAL REASONS. This is the part that decides whether your ledger is an
+  # instrument or a pile of tags. Every reason MUST carry:
+  #
+  #   describes    what distinguishes it from its NEIGHBOURS. Aim for the shape
+  #                "distinct from X, because Y". A reason you cannot tell apart from
+  #                its neighbour is one you will apply inconsistently across hundreds
+  #                of entries — and inconsistently-applied reasons cannot be distilled.
+  #   about        `item-state` (about the incoming item) or `project-policy`
+  #                (about YOUR project). This is what constrains the next field.
+  #   retire_to    where this reason's finding goes when the ledger is deleted.
+  #                `null` is legitimate for `item-state` — "it evaporates, git history
+  #                is enough" — but MUST be written explicitly so it is a choice.
+  #                For `project-policy` it MUST NOT be null: policy reasons are exactly
+  #                the ones a future contributor will re-litigate.
+  #
+  # Optionally `requires_evidence: [kind, ...]` — evidence kinds an entry MUST carry to
+  # be dismissed for this reason. Use it where reading the spec and concluding it
+  # *should* work is not evidence that it *does*.
+  #
+  # Uncomment the two examples below as a starting shape, then write your own. The empty
+  # list is deliberate and it bites immediately: with no reasons declared, nothing can be
+  # dismissed. That is vocabulary-before-seeding enforced by the format rather than
+  # recommended by a document.
+  non_target_reasons: []
+    # - reason: out-of-project-scope
+    #   describes: >
+    #     The capability itself is not something this project intends to provide.
+    #     Distinct from composition-belongs-downstream, which dismisses only the
+    #     packaging of a capability we do provide.
+    #   about: project-policy
+    #   retire_to: docs/project-target.md
+    # - reason: not-reproducible
+    #   describes: >
+    #     Reported behaviour could not be reproduced against current code.
+    #     Distinct from stale-no-repro, where nobody tried.
+    #   about: item-state
+    #   retire_to: null    # evaporates; git history is enough
+
+  # EVIDENCE KINDS. Nothing reaches class `accepted` without at least one. This is the
+  # other half of the two-sided cost: dismissal costs a destination, acceptance costs
+  # evidence. These four are a domain-free starting set — replace them with the kinds
+  # of proof that actually settle questions in YOUR project, and group them with
+  # comments the way this file groups statuses.
+  evidence_kinds:
+    - kind: source-read
+      describes: Read the relevant source in this repository and cited the files.
+    - kind: spec-ref
+      describes: Cited an external specification or reference document.
+    - kind: repro
+      describes: Reproduced the reported behaviour, or established that it does not reproduce.
+    - kind: test
+      describes: An automated test demonstrates the behaviour.
+
+  # FIELDS YOUR PROJECT ADDS. The six base fields and the ratchet above them are the
+  # spec's; everything else an entry carries is yours, and a field whose values are
+  # constrained is declared here — for the same reason every other constrained value is.
+  # There is no privileged `tags:` or `priorities:` list; they are just fields.
+  #
+  # fields:
+  #   - field: priority
+  #     describes: How much it would cost us to be wrong about this.
+  #     values: [p0, p1, p2, p3]
+  #   - field: tags
+  #     describes: Free-form grouping. A list; every element must be declared here.
+  #     values: [bug, perf, docs]
+
+# The entries. An empty list is not an unfinished ledger — it is retirement.
+#
+# Fields, and the class at which each becomes required. Every class adds to the FIRST row,
+# and `done` adds to `accepted`. The three middle rows are alternatives, not a ladder — read
+# top-to-bottom as cumulative and an accepted entry would owe a dismissal reason.
+#
+#   untriaged   id, source, type, summary, status, first_seen   (the base row)
+#   parked      base + last_reviewed
+#   dismissed   base + last_reviewed, at least one non_target_reasons entry
+#   accepted    base + next_action, evidence with at least one kind
+#   done        everything accepted requires, + evidence.local_files non-empty,
+#               + next_action: none
+#
+# A field not yet required at the entry's class MUST be ABSENT, not present-and-empty.
+# No `priority: null`, no stub `evidence:` block. Absent and empty are different
+# assertions, and omission is worth about 3x on the size of a seeded ledger.
+#
+# `summary` is ALWAYS a double-quoted scalar — always, not only when the content
+# requires it. A rule with no branches cannot be got wrong at entry 900.
+#
+#   - id: todo-1
+#     source: local
+#     type: todo
+#     summary: "Something nobody has decided about yet"
+#     status: needs-triage
+#     first_seen: 1970-01-01
+items: []

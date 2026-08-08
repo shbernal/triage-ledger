@@ -1,0 +1,607 @@
+/**
+ * The command surface.
+ *
+ * Read commands take `--json` and emit losslessly, because at several hundred entries the
+ * thing doing the reading is usually an agent. Mutations take `--dry-run`, validate before
+ * writing, and refuse an ambiguous id rather than guessing.
+ */
+
+import fs from 'node:fs/promises'
+import { existsSync, readFileSync } from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { CLASSES, TERMINAL_CLASSES, VOCABULARY_LISTS } from './model.mjs'
+import { indexLedger, isMapping, readLedgerText, todayIsoDate } from './ledger.mjs'
+import { missingRetireDestinations, outstandingItems, validateLedgerText } from './validate.mjs'
+import { addLedgerItemText, removeLedgerItemText, setLedgerItemStatusText } from './surgery.mjs'
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const TEMPLATES = path.join(HERE, '..', 'templates')
+
+function json(value) {
+	return JSON.stringify(value, null, 2)
+}
+
+async function loadLedger(options) {
+	let text
+	try {
+		text = await fs.readFile(options.ledger, 'utf8')
+	} catch (error) {
+		if (error.code === 'ENOENT') {
+			throw new Error('no ledger at ' + options.ledger + ' — run `triage-ledger init`, or pass --ledger <path>')
+		}
+		throw error
+	}
+	const { data, errors, index } = readLedgerText(text)
+	if (errors.length > 0) throw new Error(errors.join('\n'))
+	return { text, data, index: index ?? indexLedger(data) }
+}
+
+// ------------------------------------------------------------------------- filtering
+
+function matchesAny(values, candidate) {
+	return !values?.length || values.includes(candidate)
+}
+
+function searchText(item) {
+	return Object.values(item)
+		.filter((value) => typeof value === 'string')
+		.join('\n')
+		.toLowerCase()
+}
+
+export function filterItems(index, filters = {}) {
+	const search = filters.search?.toLowerCase()
+	return index.items.filter((item) => {
+		if (!matchesAny(filters.status, item.status)) return false
+		if (!matchesAny(filters.type, item.type)) return false
+		if (filters.class?.length && !filters.class.includes(index.classOfItem(item))) return false
+		if (filters.reason?.length) {
+			const reasons = Array.isArray(item.non_target_reasons) ? item.non_target_reasons : []
+			if (!filters.reason.some((reason) => reasons.includes(reason))) return false
+		}
+		if (filters.id?.length && !filters.id.includes(item.id)) return false
+		if (search && !searchText(item).includes(search)) return false
+		return true
+	})
+}
+
+export function hasFilters(filters) {
+	return Object.values(filters).some((value) => (Array.isArray(value) ? value.length > 0 : value !== undefined))
+}
+
+// ------------------------------------------------------------------------------ init
+
+export async function commandInit(options, io) {
+	// A profile has no runtime existence: it is a file in templates/ that `init` copies,
+	// and nothing downstream branches on which one was chosen. So the list of profiles is
+	// a directory listing, not a constant — the moment it is a constant, the CLI has
+	// opinions about domains again.
+	const profile = options.profile || 'core'
+	const template = path.join(TEMPLATES, profile === 'core' ? 'backlog.yml' : profile + '.yml')
+	if (!existsSync(template)) {
+		const available = (await fs.readdir(TEMPLATES))
+			.filter((name) => name.endsWith('.yml'))
+			.map((name) => (name === 'backlog.yml' ? 'core' : name.replace(/\.yml$/, '')))
+		throw new Error('unknown profile: ' + profile + ' (available: ' + available.join(', ') + ')')
+	}
+	if (existsSync(options.ledger)) throw new Error('refusing to overwrite an existing ledger at ' + options.ledger)
+
+	const body = await fs.readFile(template, 'utf8')
+	if (options.dryRun) {
+		io.stdout(options.json ? json({ ledger: options.ledger, profile, wrote: false }) : 'Would write ' + options.ledger)
+		return 0
+	}
+	await fs.mkdir(path.dirname(options.ledger), { recursive: true })
+	await fs.writeFile(options.ledger, body)
+	if (options.json) {
+		io.stdout(json({ ledger: options.ledger, profile, wrote: true }))
+		return 0
+	}
+	io.stdout(
+		[
+			'Wrote ' + options.ledger + (profile === 'core' ? '' : ' (profile: ' + profile + ')'),
+			'',
+			'Next: fill in the vocabulary BEFORE you seed. Deciding what you will and will not',
+			'carry before you have seen the specific items is the difference between a policy',
+			'and a pile of case-by-case rationalizations.',
+			'',
+			'Every dismissal reason needs a `retire_to` destination — where that "no" lives once',
+			'this file is deleted. That is the one design decision this format asks of you.',
+		].join('\n')
+	)
+	return 0
+}
+
+// -------------------------------------------------------------------------- validate
+
+/**
+ * The installed agent skill is a *copy*, so it drifts as the spec moves. A stale skill
+ * teaching schema 1 against a schema 2 ledger poisons agent work silently — the agent
+ * follows confident, wrong instructions and nothing else looks unusual.
+ */
+function skillDriftWarning(schema) {
+	const skillPath = path.join(process.cwd(), '.claude', 'skills', 'triage-ledger', 'SKILL.md')
+	if (!existsSync(skillPath)) return null
+	let head
+	try {
+		head = readFileSync(skillPath, 'utf8').slice(0, 2000)
+	} catch {
+		return null
+	}
+	const declared = head.match(/^schema:\s*(\d+)\s*$/m)?.[1]
+	if (declared === undefined) return null
+	if (Number(declared) === schema) return null
+	return (
+		'the installed agent skill targets schema ' + declared + ' but this ledger declares schema ' + schema +
+		' — reinstall it with `npx skills add shbernal/triage-ledger --skill triage-ledger`'
+	)
+}
+
+export async function commandValidate(options, io) {
+	let text
+	try {
+		text = await fs.readFile(options.ledger, 'utf8')
+	} catch (error) {
+		if (error.code === 'ENOENT') throw new Error('no ledger at ' + options.ledger)
+		throw error
+	}
+	const { report, data } = validateLedgerText(text)
+	const drift = report.ok ? skillDriftWarning(data?.schema) : null
+	if (drift) report.warn(drift)
+
+	if (options.json) {
+		io.stdout(
+			json({
+				ledger: options.ledger,
+				valid: report.ok,
+				errorCount: report.errors.length,
+				warningCount: report.warnings.length,
+				errors: report.errors,
+				warnings: report.warnings,
+			})
+		)
+		return report.ok ? 0 : 1
+	}
+	const lines = []
+	if (report.errors.length > 0) {
+		lines.push('Validation failed: ' + report.errors.length + ' error(s)')
+		for (const error of report.errors) lines.push('  ✗ ' + error)
+	} else {
+		lines.push('Validation passed')
+	}
+	for (const warning of report.warnings) lines.push('  ! ' + warning)
+	io.stdout(lines.join('\n'))
+	return report.ok ? 0 : 1
+}
+
+// ------------------------------------------------------------------------ read commands
+
+function compactRow(index, item) {
+	const cls = index.classOfItem(item)
+	return item.id + '  [' + item.status + (cls ? '' : ' ?') + ']  ' + (item.summary ?? '')
+}
+
+export async function commandList(options, io) {
+	const { index } = await loadLedger(options)
+	const items = filterItems(index, options.filters)
+	if (options.json) {
+		io.stdout(json({ ledger: options.ledger, count: items.length, items }))
+		return 0
+	}
+	const limit = options.printLimit === 0 ? items.length : Math.min(options.printLimit, items.length)
+	const lines = [items.length + ' entr' + (items.length === 1 ? 'y' : 'ies')]
+	for (const item of items.slice(0, limit)) lines.push('  ' + compactRow(index, item))
+	const remaining = items.length - limit
+	if (remaining > 0) lines.push('  … ' + remaining + ' more; --print-limit 0 prints all')
+	if (items.length > 0) lines.push('', 'These are compact rows. Use `show` or --json for full entries.')
+	io.stdout(lines.join('\n'))
+	return 0
+}
+
+export async function commandShow(options, io) {
+	const { index } = await loadLedger(options)
+	let selected
+	if (options.args.length > 0) {
+		selected = options.args.map((id) => {
+			const matches = index.items.filter((item) => item.id === id)
+			if (matches.length === 0) throw new Error('ledger entry not found: ' + id)
+			if (matches.length > 1) throw new Error('ledger entry id is duplicated: ' + id)
+			return matches[0]
+		})
+	} else if (hasFilters(options.filters)) {
+		selected = filterItems(index, options.filters)
+	} else {
+		throw new Error('show requires one or more entry ids, or a filter (e.g. --class untriaged)')
+	}
+	if (options.json) {
+		io.stdout(json({ ledger: options.ledger, count: selected.length, items: selected }))
+		return 0
+	}
+	io.stdout(
+		selected
+			.map((item) =>
+				Object.entries(item)
+					.map(([key, value]) => key + ': ' + (isMapping(value) || Array.isArray(value) ? JSON.stringify(value) : value))
+					.join('\n')
+			)
+			.join('\n\n')
+	)
+	return 0
+}
+
+/**
+ * `values` is a teaching command as much as a query.
+ *
+ * Named a vocabulary list, it prints each entry with the text that distinguishes it from
+ * its neighbours and — for dismissal reasons — where it retires to. "Which reason is this
+ * one?" is the question asked constantly during a drain, and the answer used to require
+ * opening the YAML and reading comments.
+ */
+export async function commandValues(options, io) {
+	const { index } = await loadLedger(options)
+	const name = options.args[0]
+	if (!name || options.args.length !== 1) throw new Error('values requires exactly one vocabulary list or entry field')
+
+	if (name in VOCABULARY_LISTS) {
+		const listKey = { statuses: 'statuses', non_target_reasons: 'reasons', evidence_kinds: 'evidenceKinds', fields: 'fields' }[name]
+		const entries = [...index[listKey].entries()].map(([value, entry]) => ({ value, ...entry }))
+		if (options.json) {
+			io.stdout(json({ ledger: options.ledger, list: name, count: entries.length, entries }))
+			return 0
+		}
+		const lines = [name + ' (' + entries.length + ')']
+		for (const entry of entries) {
+			const suffix = []
+			if (entry.class) suffix.push('class: ' + entry.class)
+			if ('retire_to' in entry) suffix.push('retire_to: ' + (entry.retire_to === null ? 'null' : entry.retire_to))
+			if (entry.about) suffix.push(entry.about)
+			lines.push('')
+			lines.push('  ' + entry.value + (suffix.length ? '  [' + suffix.join(', ') + ']' : ''))
+			if (entry.describes) lines.push('    ' + String(entry.describes).trim().replace(/\s*\n\s*/g, ' '))
+			if (entry.requires_evidence?.length) lines.push('    requires evidence: ' + entry.requires_evidence.join(', '))
+		}
+		io.stdout(lines.join('\n'))
+		return 0
+	}
+
+	const counts = new Map()
+	for (const item of filterItems(index, options.filters)) {
+		const value = item[name]
+		if (value === undefined) continue
+		for (const entry of Array.isArray(value) ? value : [value]) {
+			const key = typeof entry === 'string' ? entry : JSON.stringify(entry)
+			counts.set(key, (counts.get(key) || 0) + 1)
+		}
+	}
+	const values = [...counts.entries()].map(([value, count]) => ({ value, count })).sort((a, b) => b.count - a.count)
+	if (options.json) {
+		io.stdout(json({ ledger: options.ledger, field: name, count: values.length, values }))
+		return 0
+	}
+	io.stdout([name + ' (' + values.length + ' distinct)', ...values.map((v) => '  ' + v.value + '  ' + v.count)].join('\n'))
+	return 0
+}
+
+/** Hand back a queue. Four hundred things is a mood; ten things is a task. */
+export async function commandNext(options, io) {
+	const { index } = await loadLedger(options)
+	const count = options.args[0] ? Number(options.args[0]) : 10
+	if (!Number.isInteger(count) || count <= 0) throw new Error('next takes a positive integer')
+	const undecided = filterItems(index, options.filters).filter((item) => index.classOfItem(item) === 'untriaged')
+	const batch = undecided.slice(0, count)
+	if (options.json) {
+		io.stdout(json({ ledger: options.ledger, remaining: undecided.length, count: batch.length, items: batch }))
+		return 0
+	}
+	if (batch.length === 0) {
+		io.stdout('Nothing undecided. Run `triage-ledger status` to see what is left.')
+		return 0
+	}
+	const width = Math.max(...batch.map((item) => item.id.length))
+	const lines = ['Next ' + batch.length + ' of ' + undecided.length + ' undecided:', '']
+	for (const item of batch) lines.push('  ' + item.id.padEnd(width) + '  ' + (item.summary ?? '').trim())
+	io.stdout(lines.join('\n'))
+	return 0
+}
+
+function computeStats(index) {
+	const byStatus = new Map()
+	const byClass = new Map(CLASSES.map((cls) => [cls, 0]))
+	let undeclared = 0
+	let oldestUndecided = null
+	let lastActivity = null
+	for (const item of index.items) {
+		byStatus.set(item.status, (byStatus.get(item.status) || 0) + 1)
+		const cls = index.classOfItem(item)
+		if (cls === null) undeclared += 1
+		else byClass.set(cls, byClass.get(cls) + 1)
+		if (cls === 'untriaged' && typeof item.first_seen === 'string') {
+			if (oldestUndecided === null || item.first_seen < oldestUndecided.first_seen) oldestUndecided = item
+		}
+		if (typeof item.last_reviewed === 'string' && (lastActivity === null || item.last_reviewed > lastActivity)) {
+			lastActivity = item.last_reviewed
+		}
+	}
+	const outstanding = outstandingItems(index)
+	const daysSince =
+		lastActivity === null ? null : Math.floor((Date.parse(todayIsoDate()) - Date.parse(lastActivity)) / 86400000)
+	return {
+		total: index.items.length,
+		outstanding: outstanding.length,
+		terminal: index.items.length - outstanding.length,
+		undeclaredStatus: undeclared,
+		byClass: Object.fromEntries(byClass),
+		byStatus: Object.fromEntries(byStatus),
+		oldestUndecided: oldestUndecided?.id ?? null,
+		lastTriageActivity: lastActivity,
+		daysSinceLastTriageActivity: daysSince,
+	}
+}
+
+/**
+ * The burn-down, and specifically days-since-last-activity.
+ *
+ * A stalled triage is silent, and a stale ledger is worse than no ledger because it
+ * implies coverage that does not exist. This number is the instrument that makes the
+ * failure visible.
+ */
+export async function commandStats(options, io) {
+	const { index } = await loadLedger(options)
+	const stats = computeStats(index)
+	if (options.json) {
+		io.stdout(json({ ledger: options.ledger, ...stats }))
+		return 0
+	}
+	const lines = [
+		stats.total + ' entries — ' + stats.outstanding + ' outstanding, ' + stats.terminal + ' terminal',
+		'',
+		'By class:',
+	]
+	for (const [cls, count] of Object.entries(stats.byClass)) {
+		lines.push('  ' + cls.padEnd(10) + count + (TERMINAL_CLASSES.has(cls) ? '  (terminal)' : ''))
+	}
+	if (stats.undeclaredStatus > 0) lines.push('  ' + 'undeclared'.padEnd(10) + stats.undeclaredStatus + '  (validation error)')
+	lines.push('', 'By status:')
+	for (const [status, count] of Object.entries(stats.byStatus)) lines.push('  ' + String(status).padEnd(24) + count)
+	lines.push('')
+	if (stats.oldestUndecided) lines.push('Oldest undecided: ' + stats.oldestUndecided)
+	if (stats.daysSinceLastTriageActivity !== null) {
+		lines.push('Days since last triage activity: ' + stats.daysSinceLastTriageActivity)
+		if (stats.daysSinceLastTriageActivity > 30 && stats.outstanding > 0) {
+			lines.push('')
+			lines.push('A stalled triage is silent. A stale ledger implies coverage it does not have —')
+			lines.push('either pick it back up, or retire what you can and delete the rest honestly.')
+		}
+	}
+	io.stdout(lines.join('\n'))
+	return 0
+}
+
+/**
+ * The machine-readable phase probe. Distinct from `stats`, which is the human's
+ * burn-down: this exists so the agent skill can route itself to the right reference
+ * without the skill having to reimplement the lifecycle.
+ */
+export async function commandStatus(options, io) {
+	const { index } = await loadLedger(options)
+	const stats = computeStats(index)
+	// A ledger with entries to decide and no dismissal reasons declared is in `setup`, not
+	// `drain` — whatever order it got there in. Dismissal is the majority operation, and
+	// routing to the drain reference would send a reader to "pick the closest existing
+	// reason" against an empty list. Checked against outstanding rather than unconditionally,
+	// so a project that only ever accepted and implemented still reaches `retire`.
+	let phase
+	if (stats.outstanding > 0) phase = index.reasons.size === 0 ? 'setup' : 'drain'
+	else if (stats.total > 0) phase = 'retire'
+	else if (index.reasons.size === 0) phase = 'setup'
+	else phase = 'seed'
+
+	const payload = {
+		ledger: options.ledger,
+		schema: index.data?.schema ?? null,
+		phase,
+		...stats,
+		vocabulary: {
+			statuses: index.statuses.size,
+			non_target_reasons: index.reasons.size,
+			evidence_kinds: index.evidenceKinds.size,
+			fields: index.fields.size,
+		},
+		hasUpstream: index.hasExternalSource(),
+	}
+	if (options.json) {
+		io.stdout(json(payload))
+		return 0
+	}
+	io.stdout(
+		[
+			'phase: ' + phase,
+			'entries: ' + stats.total + ' (' + stats.outstanding + ' outstanding)',
+			'vocabulary: ' + payload.vocabulary.statuses + ' statuses, ' + payload.vocabulary.non_target_reasons + ' dismissal reasons',
+		].join('\n')
+	)
+	return 0
+}
+
+// ---------------------------------------------------------------------- mutations
+
+async function write(options, io, text, message) {
+	if (!options.dryRun) await fs.writeFile(options.ledger, text)
+	io.stdout((options.dryRun ? 'Would ' : '') + message)
+}
+
+export async function commandAdd(options, io) {
+	const { text } = await loadLedger(options)
+	// `--set` reaches `add` as well as `set-status`. It used to be parsed, stored and never
+	// read here: the entry was written without the field and validated cleanly, which is the
+	// same silent-and-plausible failure as the `--summary` collision.
+	const updated = addLedgerItemText(text, { ...options.fields, ...options.set }, options.today)
+	await write(options, io, updated, (options.dryRun ? 'add ' : 'Added ') + options.fields.id)
+	return 0
+}
+
+export async function commandSetStatus(options, io) {
+	const { text, index } = await loadLedger(options)
+	let ids
+	let status
+
+	if (options.args.length === 2) {
+		;[ids, status] = [[options.args[0]], options.args[1]]
+		if (options.to) throw new Error('pass the new status either positionally or with --to, not both')
+	} else if (options.args.length === 0 && options.to) {
+		if (!hasFilters(options.filters)) {
+			throw new Error('bulk set-status requires a filter — refusing to transition the whole ledger by accident')
+		}
+		status = options.to
+		ids = filterItems(index, options.filters).map((item) => item.id)
+		if (ids.length === 0) throw new Error('no entries match that filter')
+	} else {
+		throw new Error('set-status takes `<id> <status>`, or `--to <status>` with a filter')
+	}
+
+	const fields = { ...options.set }
+	if (options.reasons) fields.non_target_reasons = options.reasons
+	if (options.fields.next_action !== undefined) fields.next_action = options.fields.next_action
+	if (options.fields.summary !== undefined) fields.summary = options.fields.summary
+	if (Object.keys(options.evidence).length > 0) {
+		// Merged with whatever is already there, so evidence can be built up across several
+		// calls — which is what actually happens: you read the source, then later you run the
+		// reproduction, and the second call must not erase the first.
+		const existing = index.items.find((item) => ids.includes(item.id))?.evidence
+		fields.evidence = isMapping(existing) ? { ...existing, ...options.evidence } : options.evidence
+	}
+
+	let current = text
+	for (const id of ids) current = setLedgerItemStatusText(current, id, status, { reviewDate: options.today, fields })
+
+	await write(options, io, current, (options.dryRun ? 'set ' : 'Set ') + ids.length + ' → ' + status + ':\n  ' + ids.join('\n  '))
+	return 0
+}
+
+export async function commandRemove(options, io) {
+	const { text, index } = await loadLedger(options)
+	let ids
+	if (options.args.length === 1) ids = [options.args[0]]
+	else if (options.args.length === 0 && hasFilters(options.filters)) {
+		ids = filterItems(index, options.filters).map((item) => item.id)
+		if (ids.length === 0) throw new Error('no entries match that filter')
+	} else throw new Error('remove takes one entry id, or a filter')
+
+	let current = text
+	for (const id of ids) current = removeLedgerItemText(current, id)
+	await write(options, io, current, (options.dryRun ? 'remove ' : 'Removed ') + ids.length + ':\n  ' + ids.join('\n  '))
+	if (!options.json) {
+		io.stderr('')
+		io.stderr('Before committing, grep the repo for each id above. A source comment referencing')
+		io.stderr('a removed entry becomes a dangling reference the moment the entry goes.')
+	}
+	return 0
+}
+
+// ---------------------------------------------------------------------------- retire
+
+function distil(index) {
+	const groups = new Map()
+	for (const item of index.items) {
+		if (index.classOfItem(item) !== 'dismissed') continue
+		for (const name of Array.isArray(item.non_target_reasons) ? item.non_target_reasons : []) {
+			if (!groups.has(name)) groups.set(name, [])
+			groups.get(name).push(item)
+		}
+	}
+	return [...groups.entries()].map(([reason, items]) => ({
+		reason,
+		retire_to: index.reasons.get(reason)?.retire_to ?? null,
+		describes: index.reasons.get(reason)?.describes ?? null,
+		count: items.length,
+		items: items.map((item) => ({ id: item.id, summary: item.summary })),
+	}))
+}
+
+export async function commandRetire(options, io) {
+	const { index } = await loadLedger(options)
+
+	if (options.retireMode === 'check') {
+		const outstanding = outstandingItems(index)
+		// Destinations are repo-relative, like the paths a reader would type. Resolve them
+		// against the working directory, not against the ledger's own directory.
+		const missing = missingRetireDestinations(index.data, (relPath) => existsSync(path.resolve(process.cwd(), relPath)))
+		const ok = outstanding.length === 0 && missing.length === 0
+		if (options.json) {
+			io.stdout(json({ ledger: options.ledger, ready: ok, outstanding: outstanding.map((i) => ({ id: i.id, status: i.status })), missingDestinations: missing }))
+			return ok ? 0 : 1
+		}
+		const lines = []
+		if (outstanding.length > 0) {
+			const one = outstanding.length === 1
+			lines.push(outstanding.length + (one ? ' entry still owes' : ' entries still owe') + ' this project something:')
+			for (const item of outstanding.slice(0, 20)) lines.push('  ' + item.id + '  [' + item.status + ']')
+			if (outstanding.length > 20) lines.push('  … ' + (outstanding.length - 20) + ' more')
+		}
+		if (missing.length > 0) {
+			lines.push('')
+			lines.push('Declared retirement destinations that do not exist:')
+			for (const entry of missing) lines.push('  ' + entry.reason + ' → ' + entry.retire_to)
+		}
+		if (ok) lines.push('Ready to retire: nothing outstanding, every declared destination exists.')
+		io.stdout(lines.join('\n'))
+		return ok ? 0 : 1
+	}
+
+	if (options.retireMode === 'distil') {
+		const groups = distil(index)
+		if (options.json) {
+			io.stdout(json({ ledger: options.ledger, groups }))
+			return 0
+		}
+		const lines = [
+			'One sentence per reason, at its destination. Not one line per entry — twelve entries',
+			'dismissed for one reason owe one durable statement, and the entries evaporate into',
+			'git history.',
+			'',
+		]
+		for (const group of groups) {
+			lines.push('── ' + group.reason + ' (' + group.count + ') → ' + (group.retire_to === null ? 'null (evaporates)' : group.retire_to))
+			if (group.describes) lines.push('   ' + String(group.describes).trim().replace(/\s*\n\s*/g, ' '))
+			for (const item of group.items) lines.push('     ' + item.id + '  ' + (item.summary ?? ''))
+			lines.push('')
+		}
+		io.stdout(lines.join('\n'))
+		return 0
+	}
+
+	if (options.retireMode === 'summary') {
+		const upstream = index.data?.upstream
+		const stats = computeStats(index)
+		const byType = new Map()
+		for (const item of index.items) byType.set(item.type, (byType.get(item.type) || 0) + 1)
+		const counted = [...byType.entries()].map(([type, count]) => count + ' ' + type + (count === 1 ? '' : 's')).join(' and ')
+		const dismissed = stats.byClass.dismissed ?? 0
+		const done = stats.byClass.done ?? 0
+
+		const draft = isMapping(upstream)
+			? 'Triaged ' + counted + ' inherited from `' + upstream.repo + '` as of ' + upstream.imported_at +
+			  ', filtered by `' + upstream.filter + '` (' + upstream.matched + ' of ' + upstream.total_open +
+			  ' open; ' + upstream.skipped + ' outside the filter). Kept ' + done + ', dropped ' + dismissed + '.'
+			: 'Triaged ' + counted + '. Kept ' + done + ', dropped ' + dismissed + '.'
+
+		if (options.json) {
+			io.stdout(json({ ledger: options.ledger, draft, upstream: upstream ?? null, kept: done, dropped: dismissed }))
+			return 0
+		}
+		io.stdout(
+			[
+				'Draft retirement summary — put this in your own docs, then edit it. It is the one',
+				'artifact that outlives everything, and it is what stops a future contributor',
+				're-asking every question you already answered.',
+				'',
+				draft,
+			].join('\n')
+		)
+		return 0
+	}
+
+	throw new Error('retire requires one of --check, --distil, --summary')
+}

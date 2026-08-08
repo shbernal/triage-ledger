@@ -1,0 +1,48 @@
+{
+  "name": "triage-ledger",
+  "version": "0.1.0",
+  "description": "A backlog designed to end. Seed it, drain it, retire it.",
+  "type": "module",
+  "license": "MIT",
+  "author": "shbernal",
+  "homepage": "https://github.com/shbernal/triage-ledger#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shbernal/triage-ledger.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shbernal/triage-ledger/issues"
+  },
+  "keywords": [
+    "backlog",
+    "triage",
+    "ledger",
+    "issues",
+    "fork",
+    "maintenance"
+  ],
+  "bin": {
+    "triage-ledger": "src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src/",
+    "templates/",
+    "SPEC.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "yaml": "^2.5.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "validate:templates": "node src/cli.mjs validate --ledger templates/backlog.yml && node src/cli.mjs validate --ledger templates/fork-triage.yml"
+  }
+}
