@@ -56,9 +56,12 @@ In this order, and in **two commits**:
 2. Remove the CI line that ran `validate`.
 3. Remove the pointer in `AGENTS.md` (or equivalent).
 4. `npx skills remove triage-ledger`.
-5. `grep -ri "triage-ledger" .` and check the result is empty — including any
-   `triage-ledger:<id>` references in source comments, which become dangling the moment the
-   ledger goes.
+5. Remove any link to the ledger from the project's own docs — a README or `CONTRIBUTING`
+   line pointing contributors at it. Written to be helpful, so it does not read as
+   integration, which is why it is the one left behind.
+6. `grep -ri "triage-ledger" .` **and** grep the ledger's path, and check both are empty —
+   including any `triage-ledger:<id>` references in source comments, which become dangling
+   the moment the ledger goes.
 
 **Prune in a later commit than the one that closed the entry.** The commit that did the
 work carries the entry at its terminal status with its closing notes; a separate, later

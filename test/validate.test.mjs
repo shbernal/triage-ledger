@@ -140,6 +140,25 @@ test('a field not required at this class must be absent, not present-and-empty',
 	assert.ok(errorsFor(text).some((e) => e.includes('omit the key instead')))
 })
 
+test('the omission rule is about empty placeholders, not about earliness', () => {
+	// The other half of the rule above, and the half that is easy to over-enforce: a field
+	// the ratchet does not *yet* require may carry a real value as soon as there is one.
+	// Seeding sets fields mechanically on entries still untriaged, and a `last_reviewed` on
+	// an entry that has been looked at is a fact, not padding. SPEC.md §3.
+	const text = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: needs-triage
+    first_seen: 2026-01-01
+    last_reviewed: 2026-01-02
+`
+	)
+	assert.deepEqual(errorsFor(text), [])
+})
+
 test('summary must be double-quoted, always', () => {
 	const plain = LEDGER.replace('summary: "A thing nobody has decided about"', 'summary: A thing nobody has decided about')
 	assert.ok(errorsFor(plain).some((e) => e.includes('double-quoted scalar')))

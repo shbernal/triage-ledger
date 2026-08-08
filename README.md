@@ -81,7 +81,7 @@ apply to a fork of an abandoned renderer and to a solo project's `TODO.md` alike
 The CLI runs via `npx` on Node 22 or newer, pinned to a compatible range. The skill installs
 and removes with one command each. There is no package to add, no lockfile churn, and nothing to uninstall beyond a
 line in CI — because a tool designed to be deleted should be easy to delete. The full
-integration surface is five items, and it doubles as the removal checklist (`SPEC.md` §6).
+integration surface is six items, and it doubles as the removal checklist (`SPEC.md` §6).
 
 ## Three deliverables, three audiences
 

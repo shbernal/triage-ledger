@@ -21,6 +21,10 @@ write the difference into `describes`, because that is exactly the pair that wil
 be applied interchangeably. Do not invent a status for something that is really an extra
 field: a status may declare `requires: [some_field]` instead.
 
+Classing a status `done` costs `evidence.local_files` on every entry that reaches it, so
+class `done` only what will have files to name. "Covered by something else" reads like a
+`done` and usually is not one — see [drain.md](drain.md).
+
 **Dismissal reasons.** The important ones. For each, three things:
 
 - `describes` — what distinguishes it from its **neighbours**. Aim for the shape *"distinct

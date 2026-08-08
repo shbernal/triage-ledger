@@ -91,8 +91,10 @@ vocabulary:
       class: done
       requires: [superseded_by]   # a per-status extra field, instead of a sixth class
       describes: >
-        Finished, but by something else — nothing was implemented for this entry
-        specifically. Distinct from implemented, which is why it owes a pointer.
+        Finished by the work named in superseded_by, not by a change made for this entry.
+        Distinct from implemented, which is why it owes a pointer — and class `done` only
+        because that work landed, so `evidence.local_files` can name the files IT changed.
+        Covered by a decision rather than by a diff is superseded-upstream, a dismissal.
 
   # DISMISSAL REASONS. Dismissal is the majority operation in a drain, so these are the
   # entries that hundreds of items get sorted against and that one distilled sentence is

@@ -225,9 +225,11 @@ examples over every other field a project might want constrained, and would need
 mechanism to check what the first one already checks.
 
 **Every vocabulary entry MUST be a mapping with a name key**, not a bare string, and it
-**SHOULD** carry a `describes`. On a dismissal reason `describes` is a **MUST** — see
-§7, which is about what goes in those mappings and why this is the section that stops
-the whole method degenerating into "use YAML."
+**SHOULD** carry a `describes`. The name key is the singular of the list it appears in:
+`status:` under `statuses`, `reason:` under `non_target_reasons`, `kind:` under
+`evidence_kinds`, `field:` under `fields`. On a dismissal reason `describes` is a
+**MUST** — see §7, which is about what goes in those mappings and why this is the
+section that stops the whole method degenerating into "use YAML."
 
 The asymmetry is deliberate. A status named `deferred` next to one named `on-hold` is
 worth describing but survives being obvious; a dismissal reason carries a boundary that
@@ -244,6 +246,11 @@ written from (§6). That one is not optional.
   status: needs-triage
   first_seen: 2026-08-08
 ```
+
+`id` **MUST** be unique across the ledger. It is the entry's only handle: the prune
+commit names it, a source comment may be tagged with it, and teardown is a grep for it
+(§6). Two entries sharing one make every one of those ambiguous, and the moment it can
+happen is a bulk seed — the same moment `id_prefix` above exists to police.
 
 `summary` **MUST** be written as a double-quoted scalar — always, not only when the
 content requires it. Measured against a real issue backlog, roughly a quarter of titles
@@ -281,6 +288,24 @@ without naming files. Writing it into the format means the rule is enforced inst
 documented, and it means a bulk seed of 400 undecided entries validates cleanly — which
 the flat "every entry needs everything" alternative does not.
 
+The two fields the ratchet adds that are not self-evident, in full. `non_target_reasons`
+is a list of *names* — the `reason:` keys of declared vocabulary entries, not copies of
+the mappings:
+
+```yaml
+- id: upstream-issue-91
+  source: acme/renderer#91
+  type: issue
+  summary: "Ship a CommonJS build"
+  status: non-target
+  first_seen: 2026-08-08
+  last_reviewed: 2026-08-12
+  non_target_reasons: [commonjs]
+```
+
+More than one is allowed and means exactly what it says: the entry was dismissed for
+both, and at retirement it counts toward both destinations (§6).
+
 `evidence` is a mapping, not a note:
 
 ```yaml
@@ -293,9 +318,14 @@ evidence:
 
 ### Omission, not empty placeholders
 
-**A field not yet required at the entry's class MUST be absent, not present-and-empty.**
-No `priority: null`. No `target_area: []`. No stub `evidence:` block on an undecided
-entry.
+**A field carrying no value MUST be absent, not present-and-empty.** No `priority: null`.
+No `target_area: []`. No stub `evidence:` block on an undecided entry.
+
+The rule is about empty placeholders, not about earliness. A field the ratchet does not
+*yet* require **MAY** carry a real value as soon as there is one to carry: §5 sanctions a
+seeding mode setting `upstream_patch` mechanically while entries are still `untriaged`,
+and an `accepted` entry recording `last_reviewed` is stating a fact, not padding. What
+must never appear is the key with nothing behind it.
 
 This is worth 3× on the size of a seeded ledger — the difference between a file you can
 open and one you cannot — but the reason it is a MUST rather than a suggestion is
@@ -525,10 +555,22 @@ hundred lines somewhere else.
 
 Everything this system touches in your repository **MUST** be something you can list:
 the ledger file, whatever CI line checks it, the pointer in your agent instructions, any
-installed tooling, and the form entry ids take when referenced from source. The reason
-is not tidiness — **the integration surface is the removal checklist**, and a surface
-you cannot enumerate makes retirement archaeology instead of a procedure. Every
-convenience this system might grow is worth exactly what it costs to remove.
+installed tooling, any link to the ledger from your own docs, and the form entry ids
+take when referenced from source. The reason is not tidiness — **the integration surface
+is the removal checklist**, and a surface you cannot enumerate makes retirement
+archaeology instead of a procedure. Every convenience this system might grow is worth
+exactly what it costs to remove.
+
+The docs link is the one that gets left behind, because it was written to be helpful: a
+README line pointing contributors at the ledger reads as documentation rather than as
+integration, and nothing about it looks like tooling on the day you tear the tooling out.
+
+**It is the adoption checklist too, and that is the reading that keeps it true.** The
+list is not compiled at teardown; it is written one line at a time while adopting, and a
+line is only enumerable later if it went in deliberately. Two entries on it are also
+claims about each other — the pointer in your agent instructions says CI checks this
+file — so adopting them out of order leaves a statement that is false until the other
+lands, and nothing in a passing build will tell you.
 
 That constraint is what makes the next list short enough to be real.
 
@@ -544,8 +586,8 @@ That constraint is what makes the next list short enough to be real.
    a future contributor re-asking every dismissed question. It is derivable from the
    root `upstream:` block (§3) plus counts — which is why that block is mandatory.
 4. **Delete the ledger file.**
-5. **Remove the tooling**: CI wiring, scripts entries, any installed agent skill, and
-   the pointer in your agent instructions.
+5. **Remove the tooling**: CI wiring, scripts entries, any installed agent skill, the
+   pointer in your agent instructions, and any link to the ledger from your own docs.
 6. **Grep** for the ledger path and for entry ids across the whole repo.
 
 Step 6 matters more than it looks. Source comments referencing entry ids are a real
@@ -659,8 +701,45 @@ statuses:
   extra fields required of entries at that status. `superseded` needs a pointer to what
   replaced it and nothing else does — that is one extra field, not a sixth class.
 
+**Classing a status `done` costs `evidence.local_files`**, per §3's ratchet, and that
+price is not negotiable from the vocabulary layer — it is the rule that makes retirement
+mean something. Which decides what `superseded` above can honestly be. If the work that
+superseded the entry landed, the files *it* changed are this entry's evidence and `done`
+is right. If nothing changed — the ask was covered by a decision rather than by a diff —
+then what happened is that the project decided against doing this as filed, which is
+class `dismissed`, under a reason whose `retire_to` points at where that decision now
+lives. Reaching for `done` in the second case means attaching a file that did not change
+for it, and the format has then extracted a small lie instead of a fact.
+
+Read that as the general test, because `superseded` is only the sharpest instance of it:
+a status is class `done` when there is something in this repository to point at, and
+class `dismissed` when the honest output is a sentence.
+
 A project **SHOULD** define at least one status per class it intends to use, and the
 names are entirely its own.
+
+### Evidence kinds
+
+```yaml
+evidence_kinds:
+  - kind: source-read
+    describes: Read the relevant source in this repository and cited the files.
+  - kind: repro
+    describes: >
+      Reproduced the reported behaviour, or established that it does not reproduce.
+      Distinct from source-read, which is an argument about the code and not a run of it.
+```
+
+This is the list an entry's `evidence.kinds` draws from, and it is the acceptance half
+of the two-sided cost — so name the kinds of proof that actually settle questions in
+your project. A renderer's `render-check` and a parser's `repro` are not
+interchangeable, and a set adopted from someone else's domain converges on
+`source-read` for everything, which is the same as having no evidence requirement.
+
+`describes` is a **SHOULD** here rather than the **MUST** it is on a dismissal reason: an
+evidence kind is a claim about what you did, and the entry's `local_files` and
+`spec_refs` show it. But a kind whose boundary is unclear gets applied to whatever is
+nearest, so the "distinct from X" shape earns its place here as well.
 
 ### Fields your project adds
 

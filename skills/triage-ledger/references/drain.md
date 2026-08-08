@@ -38,6 +38,22 @@ number, three words, a stack trace. Rewriting one is a triage act, not tampering
 is the provenance field and nothing is lost. Until those are done the ledger is not yet
 readable offline, which is a promise it has to keep.
 
+## "Something else covered it"
+
+The move that looks like a fifth option and is really one of the four. Decide it by asking
+what you can point at:
+
+- The superseding work **landed** → the entry is class `done`, and its
+  `evidence.local_files` names the files *that* work changed. It owes a pointer to what
+  replaced it, which is what `requires: [superseded_by]` is for.
+- **Nothing changed** — it was covered by a decision, not by a diff → that is a dismissal.
+  Pick the reason whose `retire_to` is where the decision now lives.
+
+Do not close the second case as `done` against a file that did not really change for it.
+Class `done` costs `evidence.local_files` precisely so that "finished" is checkable, and an
+attached file that is not evidence of anything is how that stops being true — quietly, and
+in the direction that makes retirement look further along than it is.
+
 ## Batch the obvious ones
 
 ```sh

@@ -60,7 +60,7 @@ and Linux-only CI never sees it.
 
 ## The integration surface, which is also the removal checklist
 
-Five things. If you cannot list everything the system touches, you cannot remove it, and
+Six things. If you cannot list everything the system touches, you cannot remove it, and
 retirement becomes archaeology instead of a procedure.
 
 | # | Touchpoint | Removed by |
@@ -70,6 +70,13 @@ retirement becomes archaeology instead of a procedure.
 | 3 | a pointer in `AGENTS.md` (3 lines) | delete the paragraph |
 | 4 | `triage-ledger:<id>` references in source comments | one grep for one literal string |
 | 5 | the installed skill in `.claude/skills/` | `npx skills remove triage-ledger` |
+| 6 | any link to the ledger from your own docs | delete the link |
+
+Row 6 is the one that gets left behind, and it is worth knowing why: a README line
+pointing contributors at the ledger was written to be *helpful*, so it reads as
+documentation rather than as integration, and on the day you tear the tooling out nothing
+about it looks like tooling. It is on this list so that it is written down when it goes
+in. The grep at teardown catches it either way; the list is what stops you being surprised.
 
 Nothing enters your dependency tree. That is deliberate: a tool designed to be deleted
 should not be something your linters, coverage and CI have to own first.
@@ -88,6 +95,16 @@ Undecided work lives in `docs/backlog.yml`, a triage ledger (see
 https://github.com/shbernal/triage-ledger). Do not add entries by hand-editing;
 run `npx triage-ledger@0.1 --help`. Every dismissal needs a declared reason.
 ```
+
+**Write it in the same pass as the CI line, in that order.** Rows 2 and 3 are the two
+touchpoints that make claims about each other: the moment this paragraph says the ledger
+is checked, something had better be checking it. Adopt them apart and you are left with an
+instruction to agents that is false until the other lands — and nothing tells you, because
+a repository with no CI line has no failing build to notice.
+
+The general point is that the table above is the *adoption* checklist as much as the
+removal one. It is not compiled at teardown; it is written a row at a time on the way in,
+and a row is only enumerable later if it went in deliberately.
 
 ## The failure this is designed against
 

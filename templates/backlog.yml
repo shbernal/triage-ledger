@@ -72,8 +72,10 @@ vocabulary:
       class: done
       requires: [superseded_by]   # a per-status extra field, instead of a sixth class
       describes: >
-        Finished, but by something else — nothing was implemented for this entry
-        specifically. Distinct from implemented, which is why it owes a pointer.
+        Finished by the work named in superseded_by, not by a change made for this entry.
+        Distinct from implemented, which is why it owes a pointer — and class `done` only
+        because that work landed, so `evidence.local_files` can name the files IT changed.
+        Covered by a decision rather than by a diff is a dismissal, not this.
 
   # DISMISSAL REASONS. This is the part that decides whether your ledger is an
   # instrument or a pile of tags. Every reason MUST carry:
