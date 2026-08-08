@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Windows is not a courtesy row in this matrix. The defects this tool was written
+    # against are Windows-shaped: a literal `&` corrupting a write through a shell, and
+    # `gh` emitting CRLF that reaches a `summary:` value where no diff will show it.
+    # Linux-only CI catches neither, so a green Linux build would be evidence of nothing.
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        # The floor declared in `engines`, and current. The floor is the one that matters:
+        # it is what an adopter running `npx` on an old LTS actually gets.
+        node: ['20', '24']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      # The templates are shipped data, and `init` copies them verbatim. A template that
+      # does not validate would hand every new adopter a broken ledger on their first
+      # command, and nothing in the unit tests reads the files as a user would get them.
+      - run: npm run validate:templates
+
+  self-check:
+    # This repository defines the method; it does not use one. What it can check is that
+    # the tool's own claim about itself holds: no project vocabulary in `src/`. That is
+    # covered by a test, and this job exists to make the working-tree form visible too —
+    # a line ending sneaking back in would fail here before it failed mysteriously above.
+    name: line endings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: no CR bytes in tracked files
+        run: |
+          if git grep -Il $'\r' -- . ; then
+            echo "::error::a tracked file contains CR bytes; .gitattributes should have normalized it"
+            exit 1
+          fi
+          echo "clean"
