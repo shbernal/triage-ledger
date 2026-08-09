@@ -217,24 +217,40 @@ Every constrained value your ledger uses is declared here. **A value not declare
 vocabulary MUST be an error, not a new value.** That invariant is what makes a typo a typo
 instead of a silently invented category.
 
-There are four lists, and only four. Three name things this spec is about — `statuses`,
+There are four lists, and only four: **a key under `vocabulary:` that is not one of them
+MUST be an error.** Three name things this spec is about — `statuses`,
 `non_target_reasons`, `evidence_kinds` — and the fourth, `fields`, is where everything
 else goes: tags, priorities, target areas, whatever your project wants an entry to carry
 (§7). Giving `tags` and `priority` slots of their own would privilege two arbitrary
 examples over every other field a project might want constrained, and would need a second
 mechanism to check what the first one already checks.
 
-**Every vocabulary entry MUST be a mapping with a name key**, not a bare string, and it
-**SHOULD** carry a `describes`. The name key is the singular of the list it appears in:
-`status:` under `statuses`, `reason:` under `non_target_reasons`, `kind:` under
-`evidence_kinds`, `field:` under `fields`. On a dismissal reason `describes` is a
-**MUST** — see §7, which is about what goes in those mappings and why this is the
-section that stops the whole method degenerating into "use YAML."
+Refusing the fifth key is not tidiness. `fields` is the one list a ledger may leave out,
+so a misspelt `feilds:` is otherwise a legal document: every field declaration parks
+somewhere nothing reads, every `values:` and `required_when_triaged` in it silently stops
+applying, and the ledger validates. The three required lists are protected by their own
+absence; this rule is what protects the fourth.
 
-The asymmetry is deliberate. A status named `deferred` next to one named `on-hold` is
-worth describing but survives being obvious; a dismissal reason carries a boundary that
-two hundred entries will be sorted against and one sentence will later have to be
-written from (§6). That one is not optional.
+**Every vocabulary entry MUST be a mapping with a name key**, not a bare string. The name
+key is the singular of the list it appears in: `status:` under `statuses`, `reason:`
+under `non_target_reasons`, `kind:` under `evidence_kinds`, `field:` under `fields`. On a
+dismissal reason `describes` is a **MUST** — see §7, which is about what goes in those
+mappings and why this is the section that stops the whole method degenerating into "use
+YAML."
+
+Everywhere else `describes` is a **SHOULD**, and it is worth asking for exactly where an
+entry can be confused with a neighbour. For statuses the neighbourhood is the class:
+`deferred` next to `on-hold`, both `parked`, is where a project has to write the
+difference down, whereas `accepted` describing itself as "decided for" tells a reader
+what they already knew. Evidence kinds and fields have no such partition — every entry in
+those lists is an alternative to every other — so there the SHOULD is on all of them.
+Stated flatly over every vocabulary entry instead, it would fire on every well-named
+status, and a warning that always fires is a warning nobody reads.
+
+The asymmetry with dismissal reasons is deliberate. A status survives being obvious; a
+dismissal reason carries a boundary that two hundred entries will be sorted against and
+one sentence will later have to be written from (§6). That one is not optional, and it is
+not conditional on having a neighbour.
 
 ### Entries
 
@@ -246,6 +262,12 @@ written from (§6). That one is not optional.
   status: needs-triage
   first_seen: 2026-08-08
 ```
+
+Every date in the ledger — `first_seen`, `last_reviewed`, and `upstream.imported_at`
+above — **MUST** be an ISO calendar date, `YYYY-MM-DD`: no time, no zone, no other
+format. The only questions anyone asks of these fields are *what has sat here longest*
+and *when did anyone last look at this*, and in that form both are string comparisons
+that sort correctly and that a human reads without conversion. A ledger is not a log.
 
 `id` **MUST** be unique across the ledger. It is the entry's only handle: the prune
 commit names it, a source comment may be tagged with it, and teardown is a grep for it
@@ -315,6 +337,12 @@ evidence:
   spec_refs: ['CSS Color 4 §12']
   result: pass                       # pass | fail | inconclusive
 ```
+
+`kinds` is the only sub-field the ratchet requires, and it **MUST** name declared
+`evidence_kinds`. `result` is optional; when present it **MUST** be one of `pass`, `fail`
+or `inconclusive`. Three and not two, because a check that neither confirmed the
+behaviour nor refuted it has an honest outcome, and recording it as `fail` is how a
+reproduction nobody managed to run becomes a bug nobody has.
 
 ### Omission, not empty placeholders
 

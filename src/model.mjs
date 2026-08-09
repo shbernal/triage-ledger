@@ -36,9 +36,11 @@ export const SPEC_FIELDS = [...BASE_FIELDS, 'last_reviewed', 'non_target_reasons
 /**
  * The vocabulary lists the spec defines, and the key that names an entry in each.
  *
- * A project may add lists of its own; those are read generically (the name is the
- * mapping's first key) and are inert — nothing keys off them. Everything a project
- * actually wants constrained belongs under `fields`, which is the general mechanism.
+ * Four, and only four (§3): a fifth key under `vocabulary:` is an error rather than an
+ * inert list nothing reads, because `fields` is the one of the four a ledger may omit and
+ * a misspelling of it would otherwise be a legal document with every field constraint in
+ * it switched off. Everything a project wants constrained goes under `fields`, which is
+ * the general mechanism.
  */
 export const VOCABULARY_LISTS = {
 	statuses: 'status',

@@ -69,17 +69,14 @@ export function isEmptyValue(value) {
 }
 
 /**
- * The name of a vocabulary entry.
+ * The name of a vocabulary entry: the value under the singular of its list's name.
  *
- * For the four lists the spec defines, the key is known. For a list a project invented,
- * the name is the mapping's first key — which costs nothing, because nothing keys off
- * project-invented lists. Anything a project wants *enforced* goes under `fields`.
+ * There are four lists and only four (§3), so the key is always known — no list a project
+ * invented can arrive here to be read generically.
  */
 export function vocabularyEntryName(listName, entry) {
 	if (!isMapping(entry)) return null
-	const known = VOCABULARY_LISTS[listName]
-	const key = known ?? Object.keys(entry)[0]
-	const value = entry[key]
+	const value = entry[VOCABULARY_LISTS[listName]]
 	return typeof value === 'string' && value.length > 0 ? value : null
 }
 

@@ -305,6 +305,24 @@ test('a project-declared field constrains its values, its types and when it is r
 	assert.ok(errorsFor(wrongValue).some((e) => e.includes('undeclared value for `upstream_patch`')))
 })
 
+test('there are four vocabulary lists and only four', () => {
+	// The case worth a test is not the invented fifth list — it is the misspelling. `fields`
+	// is the one list a ledger may leave out, so `feilds:` would otherwise be a legal
+	// document in which every field declaration sits somewhere nothing reads.
+	const misspelt = LEDGER.replace(
+		'  evidence_kinds:',
+		`  feilds:
+    - field: upstream_patch
+      values: [applies, obsolete]
+      required_when_triaged: true
+  evidence_kinds:`
+	)
+	assert.ok(errorsFor(misspelt).some((e) => e.includes('four vocabulary lists and only four')), errorsFor(misspelt).join('\n'))
+
+	const invented = LEDGER.replace('  evidence_kinds:', '  priorities:\n    - priority: high\n  evidence_kinds:')
+	assert.ok(errorsFor(invented).some((e) => e.includes('belongs under `fields`')), errorsFor(invented).join('\n'))
+})
+
 test('a project may not redeclare a field the spec governs', () => {
 	const text = LEDGER.replace(
 		'  evidence_kinds:',

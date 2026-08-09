@@ -174,10 +174,15 @@ function validateVocabularyShape(report, index) {
 			else seen.add(name)
 		})
 	}
+	// Four lists and only four (§3). The case this is really for is `feilds:` — `fields` is
+	// the one list a ledger may leave out, so a misspelling of it otherwise validates with
+	// every field constraint in the file silently switched off.
 	for (const listName of Object.keys(vocabulary)) {
-		if (!(listName in VOCABULARY_LISTS) && !Array.isArray(vocabulary[listName])) {
-			report.error('vocabulary.' + listName + ' must be a list')
-		}
+		if (listName in VOCABULARY_LISTS) continue
+		report.error(
+			'vocabulary.' + listName + ': there are four vocabulary lists and only four — ' + Object.keys(VOCABULARY_LISTS).join(', ') +
+				'. Anything else this project wants an entry to carry belongs under `fields`'
+		)
 	}
 	if (!hasOwn(vocabulary, 'statuses') || index.statuses.size === 0) {
 		report.error('vocabulary.statuses must declare at least one status — otherwise no entry can have a legal status')
