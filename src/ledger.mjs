@@ -36,6 +36,23 @@ export function parseLedgerText(text) {
 	}
 }
 
+/**
+ * Would this text, written unquoted, be read back as the same string?
+ *
+ * Asked of the parser rather than answered with a regex, and deliberately: the question
+ * is not "does this look like a number" in the abstract, it is "does *this* file's reader
+ * think so". Those are the same question only for as long as a hand-written pattern keeps
+ * up with the schema, and the failure when it does not is silent. Handing the text to the
+ * same parser the ledger is read with makes them the same question by construction.
+ */
+export function readsBackAsItself(text) {
+	try {
+		return parseDocument(text, { prettyErrors: false }).toJS() === text
+	} catch {
+		return false
+	}
+}
+
 export function isMapping(value) {
 	return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }

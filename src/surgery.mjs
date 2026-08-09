@@ -15,7 +15,7 @@
  * invalid ledger fails instead of writing.
  */
 
-import { indexLedger, isIsoDate, parseLedgerText, todayIsoDate } from './ledger.mjs'
+import { indexLedger, isIsoDate, parseLedgerText, readsBackAsItself, todayIsoDate } from './ledger.mjs'
 import { validateLedgerText } from './validate.mjs'
 
 /**
@@ -62,6 +62,16 @@ export function dominantLineEnding(text) {
 // ------------------------------------------------------------------------- emission
 
 const PLAIN_SCALAR = /^[A-Za-z0-9][\w.\-/#+]*$/
+
+/**
+ * Words to quote regardless of what our own parser makes of them.
+ *
+ * Not redundant with the round-trip check below, and the difference is the point: under
+ * YAML 1.2, which is what this file is read as, `yes` and `off` are ordinary strings. They
+ * are booleans to a 1.1 reader, and a ledger is read by things that are not this tool —
+ * a `python yaml.safe_load` in someone's script, an editor's highlighter. Quoting them
+ * costs two characters and removes the disagreement.
+ */
 const YAML_RESERVED = new Set(['true', 'false', 'null', 'yes', 'no', 'on', 'off', '~'])
 
 /**
@@ -69,10 +79,19 @@ const YAML_RESERVED = new Set(['true', 'false', 'null', 'yes', 'no', 'on', 'off'
  *
  * A JSON string is a valid YAML 1.2 double-quoted scalar, so `JSON.stringify` is the whole
  * escape implementation and there is no per-character list to get wrong.
+ *
+ * Surviving the round trip is about *type* as much as about characters, and that half is
+ * the one with no visible symptom. Everything the CLI receives is a string — `--set
+ * spec_refs=3.10` hands over `"3.10"` — and a string that looks like a number, written
+ * plain, is read back as one: `3.10` returns as `3.1`, a spec reference silently
+ * renumbered, in a line that looks exactly right in a diff. So the type is checked first,
+ * because a value that genuinely *is* a number must still be written as one, and then the
+ * text is only left unquoted if the parser hands it back unchanged.
  */
 export function yamlScalar(value) {
+	if (typeof value === 'number' || typeof value === 'boolean') return String(value)
 	const text = String(value)
-	if (PLAIN_SCALAR.test(text) && !YAML_RESERVED.has(text.toLowerCase())) return text
+	if (PLAIN_SCALAR.test(text) && !YAML_RESERVED.has(text.toLowerCase()) && readsBackAsItself(text)) return text
 	return JSON.stringify(text)
 }
 

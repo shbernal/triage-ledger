@@ -80,6 +80,20 @@ test('summary is emitted double-quoted even when it did not have to be', () => {
 	assert.ok(added.includes('summary: "plain"'))
 })
 
+test('a value that looks like a number is still a string when it comes back', () => {
+	// Everything from the CLI is a string: `--set spec_refs=3.10` hands over "3.10". Written
+	// plain, YAML reads it back as 3.1 — a spec reference renumbered, in a line that looks
+	// right in the diff. Found by the fuzzer, which is the only way anyone finds this one.
+	assert.equal(yamlScalar('3.10'), '"3.10"')
+	assert.equal(yamlScalar('007'), '"007"')
+	assert.equal(yamlScalar('1e5'), '"1e5"')
+	assert.equal(yamlScalar('2026-01-01'), '2026-01-01', 'a date is a string to this parser and needs no quoting')
+	assert.equal(yamlScalar(2), '2', 'a value that really is a number must still be written as one')
+
+	const updated = updateLedgerItemText(LEDGER, 'todo-1', { next_action: '1.10' })
+	assert.equal(itemById(updated, 'todo-1').next_action, '1.10')
+})
+
 test('CRLF files stay CRLF', () => {
 	// Not cosmetic on Windows: `gh` emits CRLF, and a tool that appends LF to a CRLF file
 	// produces a whole-file diff that hides the one line that changed.
