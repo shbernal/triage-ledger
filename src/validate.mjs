@@ -24,7 +24,6 @@ import {
 	TERMINAL_CLASSES,
 	VOCABULARY_LISTS,
 	isRequiredAtClass,
-	ratchetedFields,
 } from './model.mjs'
 import { hasOwn, indexLedger, isEmptyValue, isIsoDate, isMapping, parseLedgerText, vocabularyEntryName } from './ledger.mjs'
 
@@ -407,22 +406,33 @@ function validateDeclaredFields(report, index, item, label, cls) {
 }
 
 /**
- * A field not yet required at this entry's class must be absent, not present-and-empty.
+ * A field carrying no value must be absent, not present-and-empty.
  *
  * Worth 3x on the size of a seeded ledger, but the reason it is an error rather than a
  * suggestion is semantic: at a classified status `non_target_reasons: []` is a real and
  * different claim from having no such key.
+ *
+ * Over the entry's *own* keys, not over a list of fields this tool knows the names of.
+ * SPEC.md §3 illustrates the rule with `priority: null`, and `priority` is exactly the kind
+ * of field a project carries without declaring — §7 asks for a declaration only where the
+ * values are constrained. Enforced over a closed set, the rule would miss its own example.
+ *
+ * Required fields are checked here too, and that is the sharp end of it. The ratchet asks
+ * whether the key is present; if that were the whole rule then `next_action: null` would
+ * satisfy "you cannot accept without naming a next action", and the two-sided cost could be
+ * paid by typing a key and stopping. Absent and empty stay distinguishable; neither is a
+ * value.
  */
 function validateOmission(report, index, item, label, cls) {
-	const candidates = new Set([...ratchetedFields(), ...index.fields.keys()])
-	for (const field of candidates) {
+	for (const field of Object.keys(item)) {
 		if (BASE_FIELDS.includes(field)) continue
-		if (!hasOwn(item, field)) continue
 		if (!isEmptyValue(item[field])) continue
 		const required = isRequiredAtClass(field, cls) || index.requiredByStatus(item.status).includes(field)
-		if (!required) {
-			report.error(label + ': `' + field + '` is empty and not required at ' + atStatus(item) + ' — omit the key instead')
-		}
+		report.error(
+			required
+				? label + ': `' + field + '` is required at ' + atStatus(item) + ' and empty — what it requires is a value, not the key'
+				: label + ': `' + field + '` is empty and not required at ' + atStatus(item) + ' — omit the key instead'
+		)
 	}
 }
 
@@ -444,7 +454,10 @@ function validateItem(report, index, item, position) {
 	if (typeof item.summary !== 'string') report.error(label + ': `summary` must be a string')
 	else if (item.summary.trim() === '') report.error(label + ': `summary` must not be empty — it is the only self-contained field an entry has')
 	if (!isIsoDate(item.first_seen)) report.error(label + ': `first_seen` must be YYYY-MM-DD')
-	if (hasOwn(item, 'last_reviewed') && !isIsoDate(item.last_reviewed)) {
+	// An empty value is the omission rule's business, below. There is nothing inside one for
+	// a format check to inspect, and reporting it twice tells the reader they made two
+	// mistakes when they made one.
+	if (hasOwn(item, 'last_reviewed') && !isEmptyValue(item.last_reviewed) && !isIsoDate(item.last_reviewed)) {
 		report.error(label + ': `last_reviewed` must be YYYY-MM-DD')
 	}
 
@@ -452,7 +465,14 @@ function validateItem(report, index, item, position) {
 
 	const cls = index.classOfItem(item)
 	if (cls === null) {
-		if (typeof item.status === 'string') report.error(label + ': undeclared status `' + item.status + '` — declare it in `vocabulary.statuses`')
+		// Two ways to land here, and only one of them is this entry's fault. A status the
+		// vocabulary does not declare is; a declared status whose `class` is not one of the
+		// five is a vocabulary mistake, reported there against the declaration the reader has
+		// to edit. Saying "undeclared status" for it would send them to the wrong line. Either
+		// way every rule below is keyed on the class, so there is nothing left to ask.
+		if (typeof item.status === 'string' && !index.statuses.has(item.status)) {
+			report.error(label + ': undeclared status `' + item.status + '` — declare it in `vocabulary.statuses`')
+		}
 		return
 	}
 
@@ -463,10 +483,12 @@ function validateItem(report, index, item, position) {
 		if (!hasOwn(item, field)) report.error(label + ': ' + atStatus(item) + ' declares `requires: [' + field + ']`, which is missing')
 	}
 
-	if (cls === 'dismissed') validateDismissal(report, index, item, label)
+	// Both skip an empty value for the reason given against `last_reviewed` above: `evidence:
+	// {}` is one mistake, and the omission rule is what names it.
+	if (cls === 'dismissed' && !isEmptyValue(item.non_target_reasons)) validateDismissal(report, index, item, label)
 	// Checked whenever present, not only where the ratchet demands it: an entry that
 	// volunteers evidence early is welcome to, and a half-written block is still wrong.
-	if (hasOwn(item, 'evidence')) validateEvidence(report, index, item, label, cls)
+	if (hasOwn(item, 'evidence') && !isEmptyValue(item.evidence)) validateEvidence(report, index, item, label, cls)
 
 	validateDeclaredFields(report, index, item, label, cls)
 	validateOmission(report, index, item, label, cls)

@@ -159,6 +159,95 @@ test('the omission rule is about empty placeholders, not about earliness', () =>
 	assert.deepEqual(errorsFor(text), [])
 })
 
+test('a field with nothing behind it is refused even when the tool has never heard of it', () => {
+	// SPEC.md §3 illustrates the omission rule with `priority: null` — and `priority` is
+	// exactly the kind of field a project carries *without* declaring, because §7 asks for a
+	// declaration only where the values are constrained. Enforced over the fields this tool
+	// knows the names of, the rule would miss its own example.
+	const text = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: needs-triage
+    first_seen: 2026-01-01
+    priority: null
+    note: ""
+`
+	)
+	const errors = errorsFor(text)
+	assert.ok(errors.some((e) => e.includes('`priority` is empty')), errors.join('\n'))
+	assert.ok(errors.some((e) => e.includes('`note` is empty')), errors.join('\n'))
+})
+
+test('a required field is not satisfied by an empty placeholder', () => {
+	// The ratchet asks whether the key is present. If that were the whole rule, the price of
+	// an acceptance would be typing `next_action:` and stopping — the two-sided cost payable
+	// with nothing.
+	const text = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: taken
+    first_seen: 2026-01-01
+    next_action: null
+    evidence:
+      kinds: [repro]
+`
+	)
+	const errors = errorsFor(text)
+	assert.ok(errors.some((e) => e.includes('`next_action` is required at `taken` and empty')), errors.join('\n'))
+	// Not the missing-field message. The key is on the page; sending the reader to add one
+	// they can already see is how a validator teaches people to stop reading it.
+	assert.ok(!errors.some((e) => e.includes('requires `next_action`')), errors.join('\n'))
+})
+
+test('the same holds for a field a status requires of itself', () => {
+	const withRequires = LEDGER.replace('    - status: shipped\n      class: done\n', '    - status: shipped\n      class: done\n      requires: [superseded_by]\n')
+	const text = replaceItems(
+		withRequires,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: shipped
+    first_seen: 2026-01-01
+    next_action: none
+    superseded_by: null
+    evidence:
+      kinds: [source-read]
+      local_files: [src/a.mjs]
+`
+	)
+	const errors = errorsFor(text)
+	assert.ok(errors.some((e) => e.includes('`superseded_by` is required at `shipped` and empty')), errors.join('\n'))
+})
+
+test('a status whose class is not one of the five is reported, not thrown', () => {
+	// The class is what every requirement lookup below it is keyed on. Handed onward as an
+	// arbitrary string it reached a table that has five keys, threw, and took the whole
+	// report with it — including the correct message this same run had already written.
+	const text = replaceItems(
+		LEDGER.replace('      class: dismissed\n', '      class: on-ice\n'),
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: dropped
+    first_seen: 2026-01-01
+`
+	)
+	assert.doesNotThrow(() => validateLedgerText(text))
+	const errors = errorsFor(text)
+	assert.ok(errors.some((e) => e.includes('status `dropped`: `class` must be one of')), errors.join('\n'))
+	// The entry is not where the mistake is, and its status *is* declared. Telling the
+	// reader to declare it points at the one line that is already right.
+	assert.ok(!errors.some((e) => e.includes('undeclared status')), errors.join('\n'))
+})
+
 test('summary must be double-quoted, always', () => {
 	const plain = LEDGER.replace('summary: "A thing nobody has decided about"', 'summary: A thing nobody has decided about')
 	assert.ok(errorsFor(plain).some((e) => e.includes('double-quoted scalar')))

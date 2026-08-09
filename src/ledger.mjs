@@ -8,7 +8,7 @@
  */
 
 import { parseDocument } from 'yaml'
-import { VOCABULARY_LISTS } from './model.mjs'
+import { CLASSES, VOCABULARY_LISTS } from './model.mjs'
 
 function yamlErrorMessage(error) {
 	const line = error.linePos?.[0]?.line
@@ -127,10 +127,18 @@ export function indexLedger(data) {
 		sourceKinds,
 		items: Array.isArray(data?.items) ? data.items : [],
 
-		/** The class a status declares, or null if the status is undeclared. */
+		/**
+		 * The class a status declares — one of the five, or null.
+		 *
+		 * Null covers two different mistakes: no such status, and a status declared with a
+		 * `class` that is not one of the five. Both are reported elsewhere, and neither may
+		 * leave here as a string, because every caller uses the result to look something up —
+		 * a requirements list, a counter keyed by class. An unrecognised class handed onward
+		 * is a lookup that misses, which is a crash or a silent NaN rather than a diagnosis.
+		 */
 		classOf(status) {
 			const declared = statuses.get(status)
-			return typeof declared?.class === 'string' ? declared.class : null
+			return CLASSES.includes(declared?.class) ? declared.class : null
 		},
 
 		/** The class of an entry, via its status. */
