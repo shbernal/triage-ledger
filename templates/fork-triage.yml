@@ -12,11 +12,17 @@
 # Comments in this file are load-bearing: `describes` holds the criterion, comments hold
 # the history of why the vocabulary looks like this. Any tool that rewrites this file
 # must preserve them.
+#
+# With one exception. Blocks marked `SCAFFOLD` are instructions to you, and they stop
+# being true the moment you act on them. Delete each one once you have done what it says.
+# Everything not marked is meant to survive to retirement, when a human reads this file to
+# find out what was decided.
 
 schema: 1
 
+# SCAFFOLD — make the sentence below true of this project, then delete this line.
 purpose: >
-  REPLACE ME. Records what this project will and will not carry from the backlog it
+  Records what this project will and will not carry from the backlog it
   inherited, and drains that pile to empty. It is not an issue tracker and not a
   permanent backlog; new work this project chooses to do belongs wherever this project
   already tracks work.

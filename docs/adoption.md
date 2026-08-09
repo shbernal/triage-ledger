@@ -14,10 +14,10 @@ npx skills add shbernal/triage-ledger --skill triage-ledger    # optional
    destination declared for every dismissal reason.
 2. **Seed it.** Start empty and `add` as things arrive, or migrate an existing pile.
 3. **Drain it.** `next`, `set-status`, `stats`, until nothing is outstanding.
-4. **Implement what survived.** Prune each entry in a *later* commit than the one that
-   closed it.
-5. **Retire.** `retire --check`, `retire --distil`, `retire --summary`, then delete the
-   ledger and the tooling.
+4. **Implement what survived.** Close each entry in the *same* commit as the work — run
+   `set-status` before you commit — and prune it in a *later* one.
+5. **Retire.** `retire --check`, `retire --distil`, `retire --summary` *before you prune*,
+   then reach `items: []`, then delete the ledger and the tooling.
 
 **Step 1 comes before step 2, and that ordering is the whole method.** Deciding what you
 will drop *before* you have seen the four hundred specific things is the difference between
@@ -47,6 +47,19 @@ Global scope puts the skill outside the teardown checklist and leaves it on the 
 after this project's triage has ended. Project scope means it is committed, visible in the
 repo, and removed by one line of a checklist you can actually enumerate.
 
+**Then check that the directory appeared**, because the installer exits 0 when it installs
+nothing:
+
+```sh
+ls .agents/skills/triage-ledger
+```
+
+A skill whose frontmatter does not parse is skipped and the run still succeeds, so wiring
+`skills add` into a setup script gets you a green build and no skill. This is not
+hypothetical — it is how the command above shipped broken for its first several releases,
+and every test, template and hand-run this project has missed it because none of them ran
+the install once.
+
 ## Wire the validator into CI
 
 ```yaml
@@ -64,25 +77,67 @@ line-surgery tool and not about ledgers. A CRLF ledger validates, and every muta
 whichever ending the file already uses — so under `core.autocrlf=true` the ledger behaves
 like every other text file in your repo, which is the only thing you want from it.
 
+## Writing entries from the command line
+
+`add` needs four flags before it will write anything — `--id`, `--source`, `--type` and
+`--status` — and it names all four at once rather than one per run.
+
+**A summary is one line, and on Windows that is enforced by the shell whether you like it
+or not.** The `npx` shim re-parses the command line, and a newline inside an argument takes
+that argument and every argument after it with it:
+
+```sh
+# On Windows this writes summary "one", never sets area, prints Added and exits 0.
+npx triage-ledger@0.1 add --summary "one
+two" --set area=cli …
+```
+
+Nothing in the tool can detect it — the dropped arguments never arrive. `SPEC.md` §3 makes
+a line break in a `summary` illegal for exactly this reason, so the one case that does
+reach the file fails validation instead of looking plausible. If you are seeding from `gh`,
+strip `\r` at the parse boundary: `gh` on Windows hands back titles that end in one.
+
 ## The integration surface, which is also the removal checklist
 
-Six things. If you cannot list everything the system touches, you cannot remove it, and
+Six rows. If you cannot list everything the system touches, you cannot remove it, and
 retirement becomes archaeology instead of a procedure.
 
 | # | Touchpoint | Removed by |
 |---|---|---|
-| 1 | the ledger file (`docs/backlog.yml`) | `rm` |
+| 1 | the ledger file (`docs/backlog.yml`) | `rm`, after `items: []` |
 | 2 | one CI line — `npx triage-ledger@0.1 validate` | delete the line |
 | 3 | a pointer in `AGENTS.md` (3 lines) | delete the paragraph |
 | 4 | `triage-ledger:<id>` references in source comments | one grep for one literal string |
-| 5 | the installed skill in `.claude/skills/` | `npx skills remove triage-ledger` |
-| 6 | any link to the ledger from your own docs | delete the link |
+| 5 | the installed skill: `.agents/skills/triage-ledger/`, the `.claude/skills/` mirror, and `skills-lock.json` at the repo root | `npx skills remove triage-ledger`, then delete the lockfile and the two empty directories |
+| 6 | any link to the ledger from your own docs, **including the retirement summary** | delete the link; edit the summary |
+
+**Row 1 is two things, and the first is the one people skip.** A ledger deleted with nine
+entries still in it is textually indistinguishable from one *abandoned* with nine entries
+in it, and telling those apart is the entire product. Empty the list in the commit before
+the deletion.
+
+**Row 5 is four artifacts, not one.** Installing writes the real copy under `.agents/`, a
+mirror under `.claude/` — a *second real copy* on Windows, where symlinks are unavailable,
+so the skill gets committed twice — and a lockfile at the repository root. The lockfile is
+the one that matters: it is the most visible file the adoption adds, and `skills remove`
+empties it to `{"skills":{}}` and leaves it behind, along with two empty directories.
+About a thousand lines of vendored instructions, in a project that chose npx-only
+distribution specifically to avoid vendoring anything.
 
 Row 6 is the one that gets left behind, and it is worth knowing why: a README line
 pointing contributors at the ledger was written to be *helpful*, so it reads as
 documentation rather than as integration, and on the day you tear the tooling out nothing
 about it looks like tooling. It is on this list so that it is written down when it goes
 in. The grep at teardown catches it either way; the list is what stops you being surprised.
+
+The retirement summary shares row 6 for a different reason: it *wants* to name the tool,
+it is the one document that outlives everything, and it is written after the checklist has
+already been walked. Check it last, deliberately.
+
+**Run the teardown grep as `grep -ri "triage-ledger" . --exclude-dir=.git`.** The history
+holds every one of these strings permanently and is meant to — that archive is the whole
+reason for pruning in a separate commit. Without the exclusion the check can never come
+back clean, and a check that always fails is one you learn to skip.
 
 Nothing enters your dependency tree. That is deliberate: a tool designed to be deleted
 should not be something your linters, coverage and CI have to own first.

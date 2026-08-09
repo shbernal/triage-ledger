@@ -35,7 +35,7 @@ npx triage-ledger@0.1 init           # an empty ledger and a vocabulary skeleton
    destination, write the summary, delete the file and the tooling.
 
 [`docs/adoption.md`](docs/adoption.md) is the one-page version of that, with the ordering
-mistakes people actually make and the five-item integration surface that doubles as the
+mistakes people actually make and the six-row integration surface that doubles as the
 removal checklist.
 
 Optionally install the agent skill, project-scoped:
@@ -78,10 +78,12 @@ apply to a fork of an abandoned renderer and to a solo project's `TODO.md` alike
 
 ## Nothing enters your dependency tree
 
-The CLI runs via `npx` on Node 22 or newer, pinned to a compatible range. The skill installs
-and removes with one command each. There is no package to add, no lockfile churn, and nothing to uninstall beyond a
-line in CI — because a tool designed to be deleted should be easy to delete. The full
-integration surface is six items, and it doubles as the removal checklist (`SPEC.md` §6).
+The CLI runs via `npx` on Node 22 or newer, pinned to a compatible range. There is no
+package to add and no lockfile churn — because a tool designed to be deleted should be easy
+to delete. The full integration surface is six rows, and it doubles as the removal checklist
+(`SPEC.md` §6). Installing the skill is the one row that is more than it looks: the
+installer writes a copy, a mirror and a lockfile, and `skills remove` leaves the lockfile
+and two empty directories behind. [`docs/adoption.md`](docs/adoption.md) names all four.
 
 ## Three deliverables, three audiences
 

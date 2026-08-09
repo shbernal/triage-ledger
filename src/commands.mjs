@@ -219,16 +219,35 @@ export async function commandShow(options, io) {
 		io.stdout(json({ ledger: options.ledger, count: selected.length, items: selected }))
 		return 0
 	}
-	io.stdout(
-		selected
-			.map((item) =>
-				Object.entries(item)
-					.map(([key, value]) => key + ': ' + (isMapping(value) || Array.isArray(value) ? JSON.stringify(value) : value))
-					.join('\n')
-			)
-			.join('\n\n')
-	)
+	io.stdout(selected.map(renderItem).join('\n\n'))
 	return 0
+}
+
+/**
+ * One entry, for a human.
+ *
+ * `show` used to print `non_target_reasons: ["not-reproducible"]` and
+ * `evidence: {"kinds":["repro"]}` — JSON, in the human-readable command, next to a `--json`
+ * flag that exists for exactly the other case. A list is rendered as a list and a mapping
+ * as indented keys, which is also how the field looks in the ledger the reader is about to
+ * open. Depth stops at two because nothing in this format goes deeper.
+ */
+function renderItem(item) {
+	const lines = []
+	for (const [key, value] of Object.entries(item)) {
+		if (Array.isArray(value)) {
+			lines.push(key + ':')
+			for (const element of value) lines.push('  - ' + (isMapping(element) ? JSON.stringify(element) : element))
+		} else if (isMapping(value)) {
+			lines.push(key + ':')
+			for (const [innerKey, innerValue] of Object.entries(value)) {
+				lines.push('  ' + innerKey + ': ' + (Array.isArray(innerValue) ? innerValue.join(', ') : innerValue))
+			}
+		} else {
+			lines.push(key + ': ' + value)
+		}
+	}
+	return lines.join('\n')
 }
 
 /**
@@ -493,11 +512,38 @@ export async function commandRemove(options, io) {
 	for (const id of ids) current = removeLedgerItemText(current, id)
 	await write(options, io, current, (options.dryRun ? 'remove ' : 'Removed ') + ids.length + ':\n  ' + ids.join('\n  '))
 	if (!options.json) {
+		// This used to be three fixed lines telling the reader to grep, printed whether or
+		// not there was anything to find — and a warning that always says the same thing
+		// carries no information, so it gets skipped. The tool holds the literal strings the
+		// grep needs; handing them back as a runnable command is the whole of the fix that
+		// does not require walking the working tree. `.git` is excluded because the history
+		// keeps these ids forever and is meant to: without the exclusion the check can never
+		// come back clean, which teaches its reader to ignore it.
 		io.stderr('')
-		io.stderr('Before committing, grep the repo for each id above. A source comment referencing')
-		io.stderr('a removed entry becomes a dangling reference the moment the entry goes.')
+		io.stderr('A source comment referencing a removed entry is now a dangling reference. Check:')
+		io.stderr('  ' + danglingReferenceGrep(ids))
 	}
 	return 0
+}
+
+/**
+ * The grep, with the ids in it.
+ *
+ * Fixed strings rather than a pattern, because an id is free to contain a `.`. Past a
+ * dozen the command stops being readable, and the fallback is the single declared id
+ * prefix §6 asks projects to use for exactly this — which over-matches entries that are
+ * still live, so it is a fallback and says so rather than the default.
+ */
+function danglingReferenceGrep(ids) {
+	const tail = ' . --exclude-dir=.git'
+	if (ids.length <= 12) return 'grep -rnF ' + ids.map((id) => '-e ' + JSON.stringify(id)).join(' ') + tail
+	let prefix = ids[0]
+	for (const id of ids) {
+		while (prefix && !id.startsWith(prefix)) prefix = prefix.slice(0, -1)
+	}
+	return prefix.length >= 3
+		? 'grep -rnF -e ' + JSON.stringify(prefix) + tail + '   # ' + ids.length + ' ids; this prefix also matches live entries'
+		: 'grep -rnF ' + ids.slice(0, 12).map((id) => '-e ' + JSON.stringify(id)).join(' ') + tail + '   # first 12 of ' + ids.length
 }
 
 // ---------------------------------------------------------------------------- retire
@@ -588,7 +634,16 @@ export async function commandRetire(options, io) {
 			: 'Triaged ' + counted + '. Kept ' + done + ', dropped ' + dismissed + '.'
 
 		if (options.json) {
-			io.stdout(json({ ledger: options.ledger, draft, upstream: upstream ?? null, kept: done, dropped: dismissed }))
+			io.stdout(
+				json({
+					ledger: options.ledger,
+					draft,
+					upstream: upstream ?? null,
+					kept: done,
+					dropped: dismissed,
+					countedFrom: 'entries still in the ledger',
+				})
+			)
 			return 0
 		}
 		io.stdout(
@@ -596,6 +651,16 @@ export async function commandRetire(options, io) {
 				'Draft retirement summary — put this in your own docs, then edit it. It is the one',
 				'artifact that outlives everything, and it is what stops a future contributor',
 				're-asking every question you already answered.',
+				'',
+				// The counts are of what is still in the file, and §6 tells you to prune each
+				// implemented entry as you go — so following both rules in the obvious order
+				// makes the kept count report the opposite of what happened, with nothing in the
+				// file left to notice it. The ordering is the fix; this line is where an adopter
+				// finds it out, and it belongs in the preamble rather than in a warning, because
+				// it is true on every run.
+				'Kept and dropped are counted from the entries still in this ledger. Pruning removes',
+				'exactly the ones that count as kept, so draft this before you prune — or read the',
+				'number out of `git log -- ' + path.relative(process.cwd(), options.ledger).split(path.sep).join('/') + '`.',
 				'',
 				draft,
 			].join('\n')

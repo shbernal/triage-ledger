@@ -45,6 +45,19 @@ about to redo the work will encounter it, and nobody reads a backlog before writ
 If you find yourself wanting `null` on a policy reason, the honest move is to name the
 document it should go in, even if that document does not exist yet.
 
+**You are not going to get the complete list here, and the format does not ask you to.**
+Write the reasons you can defend now — the ones you can draw a boundary around — and expect
+to add one later. The gap that stays invisible longest is a reason about *price*: for as
+long as "later" is an available answer, everything expensive parks instead of being
+dismissed, and no reason about subject matter or reproducibility can answer a question
+about cost. `retire --check` is usually the first thing that forces it, which is why
+[retire.md](retire.md) says the parked entries are where the missing reason shows up.
+
+A late reason is a normal event. What matters is that it arrives with a `describes`, an
+`about` and a destination like every other one — not that it was there on day one. What
+vocabulary-before-seeding buys is that the reasons you *did* write get applied
+consistently, and that holds whether the list ends at four or at five.
+
 **Evidence kinds.** What would someone have to have actually *done* to claim this? Group
 them — reading a spec and running the thing are different claims. Then, for any reason that
 is only honest with a particular kind of proof, add `requires_evidence: [kind]`. That is

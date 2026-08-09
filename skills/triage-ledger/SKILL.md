@@ -88,7 +88,10 @@ point is comment survival, not tool loyalty.
 Hand-edit, carefully, the way a human would:
 
 - Preserve every comment, every block scalar, and the existing key order. Do not reformat.
-- Write `summary` as a double-quoted scalar, always.
+- Write `summary` as a double-quoted scalar, always, and on one line — a line break in a
+  summary is illegal.
+- Quote anything free-text. A plain scalar has a type and YAML picks it, so `3.10` written
+  bare is the number 3.1 and the file still reads `3.10` afterwards.
 - Write only the fields the entry's class requires. Do not add empty placeholders.
 - Re-read the file after editing and check it against `SPEC.md` yourself.
 
@@ -102,8 +105,9 @@ prefix so that teardown is one grep for one literal string:
 ```
 
 Every such reference must resolve to a live entry. Before removing an entry, grep the repo
-for its id: a reference to a deleted entry is worse than no reference, because it still
-reads as explained.
+for its id — `remove` prints the exact command — because a reference to a deleted entry is
+worse than no reference: it still reads as explained. Exclude `.git`; the history keeps
+every id permanently and is meant to.
 
 ## What to tell the person you are working for
 

@@ -351,8 +351,14 @@ export function setLedgerItemStatusText(text, id, status, { reviewDate = todayIs
  * the entry's class must be absent, not present-and-empty.
  */
 function buildItemSkeleton(fields, today) {
-	for (const required of ['id', 'source', 'type', 'status']) {
-		if (!fields[required]) throw new Error('add requires --' + required.replace('_', '-'))
+	// Every missing flag at once, not the first one. The validator reports everything it
+	// finds in a single pass and argument checking used to report one thing per run, so a
+	// bare `add` cost four round trips to learn four things this function already knew. An
+	// inconsistency in how a tool reports two kinds of the same mistake is a real cost:
+	// people learn the cheaper habit from whichever they met first.
+	const missing = ['id', 'source', 'type', 'status'].filter((required) => !fields[required])
+	if (missing.length > 0) {
+		throw new Error('add requires ' + missing.map((name) => '--' + name.replace('_', '-')).join(', '))
 	}
 	const extra = {}
 	for (const [key, value] of Object.entries(fields)) {

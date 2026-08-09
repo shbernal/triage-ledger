@@ -148,6 +148,54 @@ test('a full lifecycle runs without the file being hand-edited once', async () =
 	})
 })
 
+test('add names every flag it is missing, not the first one', async () => {
+	// The validator reports everything it finds in one pass; argument checking reported one
+	// thing per run, so a bare `add` cost four round trips to learn four things the tool
+	// already knew. Two ways of reporting the same class of mistake is a real cost — people
+	// learn the habit of whichever they met first.
+	await inTempDir(async () => {
+		const { io } = capture()
+		await run(['init'], io)
+		await assert.rejects(() => run(['add', '--source', 'local'], io), /add requires --id, --type, --status/)
+	})
+})
+
+test('remove hands back the grep, with the ids in it', async () => {
+	// It used to print the same three lines whether or not there was anything to find, which
+	// is a warning that carries no information — and the tool holds the one literal string
+	// the reader would have to grep for. `.git` is excluded because the history keeps these
+	// ids forever and is meant to: without it the check can never come back clean.
+	await inTempDir(async () => {
+		const { io, err } = capture()
+		await run(['init'], io)
+		await run(['add', '--id', 'todo-1', '--source', 'local', '--type', 'todo', '--status', 'needs-triage', '--summary', 'a'], io)
+		await run(['remove', 'todo-1'], io)
+		const text = err.join('\n')
+		assert.match(text, /grep -rnF -e "todo-1" \. --exclude-dir=\.git/)
+	})
+})
+
+test('show renders lists as lists, because --json is the other command', async () => {
+	await inTempDir(async () => {
+		const { io, out } = capture()
+		await run(['init'], io)
+		await run(
+			['add', '--id', 'todo-1', '--source', 'local', '--type', 'todo', '--status', 'needs-triage', '--summary', 'a'],
+			io
+		)
+		await run(
+			['set-status', 'todo-1', 'implemented', '--evidence', 'source-read', '--local-file', 'src/a.ts', '--next-action', 'none'],
+			io
+		)
+		out.length = 0
+		await run(['show', 'todo-1'], io)
+		const text = out.join('\n')
+		assert.doesNotMatch(text, /[{[]"/, 'a structured field was printed as JSON in the human-readable command')
+		assert.match(text, /^summary: a$/m)
+		assert.match(text, /^evidence:\n {2}kinds: source-read\n {2}local_files: src\/a\.ts$/m)
+	})
+})
+
 test('--set reaches the file on add, not only on set-status', async () => {
 	// It was parsed, stored and never read by `add`: the entry was written without the
 	// field and validated cleanly. Silent, plausible, invisible to validation — the same

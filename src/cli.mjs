@@ -5,9 +5,17 @@
  * Note what is absent: any shell indirection. The prior art was invoked as
  * `pnpm run backlog -- add --summary "…"`, and a literal `&` in that summary silently
  * corrupted the write — on Windows, even with --dry-run. This is a bin, so arguments
- * arrive through `process.argv` exactly as typed, and the emitter double-quotes every
- * `summary` unconditionally. Both halves of that defect are closed, and both are
- * regression-tested with a deliberately hostile string.
+ * arrive through `process.argv` as typed, and the emitter double-quotes every `summary`
+ * unconditionally. Both halves of that defect are closed, and both are regression-tested
+ * with a deliberately hostile string.
+ *
+ * One exception, and it is not ours to close. On Windows the `npx` shim re-parses the
+ * command line, and a newline inside an argument takes that argument and every argument
+ * after it with it: `add --summary "one<LF>two" --set area=cli` writes a truncated summary,
+ * never sets `area`, and exits 0. Nothing here can detect it — the dropped arguments never
+ * arrive — so the answer is upstream of the process: §3 makes a line break in a `summary`
+ * illegal, which turns the one case that reaches the file into a validation error instead
+ * of a plausible-looking entry.
  */
 
 import path from 'node:path'
@@ -88,10 +96,14 @@ Filters (list, show, values, next, set-status --to, remove)
   --id <v[,v…]>               By id
   --search <text>             Substring, over every text field
 
-Fields (add, set-status)
+Fields (add, set-status) — add requires --id, --source, --type and --status
   --id <id>                   Entry id
   --source <ref>              Provenance; must match the pattern its type declares
-  --summary <text>            One line. Always written double-quoted.
+  --type <name>               add: the entry type, declared in source_kinds
+  --status <name>             add: the entry's status, declared in vocabulary.statuses.
+                              (Everywhere else --status filters.)
+  --summary <text>            One line — a line break is illegal, and on Windows it also
+                              truncates the command. Always written double-quoted.
   --to <status>               New status, for bulk set-status
   --reason <v[,v…]>           set-status: the dismissal reasons to record. (Everywhere
                               else --reason filters; on set-status it sets, so filter a

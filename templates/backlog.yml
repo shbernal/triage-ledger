@@ -10,12 +10,19 @@
 # Comments in this file are load-bearing: `describes` holds the criterion, comments hold
 # the history of why the vocabulary looks like this. Any tool that rewrites this file
 # must preserve them.
+#
+# With one exception. Blocks marked `SCAFFOLD` are instructions to you, and they stop
+# being true the moment you act on them — "uncomment the examples below" reads as nonsense
+# sitting above a list you have written. Delete each SCAFFOLD block once you have done what
+# it says. Everything not marked is meant to survive to retirement, when a human reads this
+# file to find out what was decided.
 
 schema: 1
 
+# SCAFFOLD — replace the text below, then delete this line.
 purpose: >
-  REPLACE ME. What this ledger is for, and what it is not. One or two sentences.
-  Name the pile it exists to drain, so a reader in six months knows what "empty" meant.
+  What this ledger is for, and what it is not. One or two sentences. Name the pile it
+  exists to drain, so a reader in six months knows what "empty" meant.
 
 # Every entry has a `type`, and every type is declared here. A kind with no
 # `source_pattern` is a LOCAL kind — work that came from nowhere but your own head.
@@ -96,10 +103,17 @@ vocabulary:
   # be dismissed for this reason. Use it where reading the spec and concluding it
   # *should* work is not evidence that it *does*.
   #
-  # Uncomment the two examples below as a starting shape, then write your own. The empty
-  # list is deliberate and it bites immediately: with no reasons declared, nothing can be
-  # dismissed. That is vocabulary-before-seeding enforced by the format rather than
-  # recommended by a document.
+  # The empty list is deliberate and it bites immediately: with no reasons declared,
+  # nothing can be dismissed. That is vocabulary-before-seeding enforced by the format
+  # rather than recommended by a document.
+  #
+  # You will not get the complete list on the first sitting, and you are not expected to.
+  # Write the boundaries you can defend now and expect to add one at retirement — the
+  # reason that stays invisible longest is one about *price*, because for as long as
+  # "later" is an available answer everything expensive parks instead of being dismissed.
+  #
+  # SCAFFOLD — uncomment the two examples as a starting shape, write your own, then delete
+  # this line and any example you did not keep.
   non_target_reasons: []
     # - reason: out-of-project-scope
     #   describes: >
@@ -135,6 +149,8 @@ vocabulary:
   # constrained is declared here — for the same reason every other constrained value is.
   # There is no privileged `tags:` or `priorities:` list; they are just fields.
   #
+  # SCAFFOLD — uncomment and edit if you need one, then delete this line and the rest of
+  # this block if you do not.
   # fields:
   #   - field: priority
   #     describes: How much it would cost us to be wrong about this.
@@ -161,8 +177,15 @@ vocabulary:
 # assertions, and omission is worth about 3x on the size of a seeded ledger.
 #
 # `summary` is ALWAYS a double-quoted scalar — always, not only when the content
-# requires it. A rule with no branches cannot be got wrong at entry 900.
+# requires it. A rule with no branches cannot be got wrong at entry 900. It carries no
+# line break, on any platform.
 #
+# A plain scalar has a type and YAML picks it, so a value meant as text that reads as a
+# number comes back a number: `3.10` becomes `3.1` and no diff shows you. Quote anything
+# free-text — `evidence.spec_refs`, `evidence.local_files`, and any field you carry
+# without declaring its values above.
+#
+# SCAFFOLD — the shape of an entry, for reference. Delete once you have real ones.
 #   - id: todo-1
 #     source: local
 #     type: todo

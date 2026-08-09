@@ -48,26 +48,57 @@ contributor re-asking every question that was already answered. Keep the filter 
 honest claim is usually "we triaged the last three years of it", and saying so costs
 nothing and buys trust.
 
+**Draft it before you prune.** The kept count is a count of entries still in the file, and
+step 4's rule removes exactly the ones that count as kept — so run this against a ledger
+that still holds them, or read the number out of `git log -- <ledger>`. Run after pruning
+it will tell you nine were dropped and none kept, for a triage that implemented five, and
+there will be nothing left in the file to notice with.
+
+The summary is also the document most likely to name this tool, and it is written after the
+teardown list has been walked. Include it when you check step 6.
+
 ## 4. Tear down
 
 In this order, and in **two commits**:
 
-1. Delete the ledger file.
+1. `remove --class dismissed` (and any remaining terminal entries) so the last committed
+   state of the ledger is `items: []`, then delete the file. Both halves matter: a file
+   deleted with nine entries in it is textually indistinguishable from a file *abandoned*
+   with nine entries in it, and telling those apart is the entire product.
 2. Remove the CI line that ran `validate`.
 3. Remove the pointer in `AGENTS.md` (or equivalent).
-4. `npx skills remove triage-ledger`.
+4. `npx skills remove triage-ledger`, then delete what it leaves: `skills-lock.json` at the
+   repository root, and the now-empty `.agents/skills/` and `.claude/skills/`. Installing
+   wrote four things; removing finishes three of them.
 5. Remove any link to the ledger from the project's own docs — a README or `CONTRIBUTING`
    line pointing contributors at it. Written to be helpful, so it does not read as
    integration, which is why it is the one left behind.
-6. `grep -ri "triage-ledger" .` **and** grep the ledger's path, and check both are empty —
-   including any `triage-ledger:<id>` references in source comments, which become dangling
-   the moment the ledger goes.
+6. `grep -ri "triage-ledger" . --exclude-dir=.git` **and** grep the ledger's path, and check
+   both are empty — including any `triage-ledger:<id>` references in source comments, which
+   become dangling the moment the ledger goes, and including the summary you just wrote.
+
+**`--exclude-dir=.git` is load-bearing, not noise.** The history holds every one of these
+strings permanently and is meant to — that archive is the point of pruning in a separate
+commit. Stated without the exclusion the check can never come back clean, and a check that
+always fails is one its reader learns to skip.
 
 **Prune in a later commit than the one that closed the entry.** The commit that did the
 work carries the entry at its terminal status with its closing notes; a separate, later
 commit removes it. Then `git log -- <ledger>` still leads a future reader to the reasoning.
 Delete it in the same commit and those notes never existed anywhere. Name each removed id
 in the prune commit message, and name the retirement summary document in the final one.
+
+**And close the entry in the commit that does the work, not the one after it.** The natural
+order — do the work, commit, then `set-status` — puts the status change in the *next*
+commit, so `git log -- <ledger>` sends a reader to whatever change happened to land next.
+That is one misleading hop, and it costs nothing to avoid: run `set-status` before you
+commit, so the diff that did the work and the diff that closed the entry are the same diff.
+
+**A reason you have to add here is a normal event, not a failure.** The parked entries are
+where it shows up: `retire --check` is usually the first thing that ever forces the question
+"are we ever doing this?", and no reason about subject matter or reproducibility can answer
+a question about price. Add it with a `describes`, an `about` and a destination like every
+other one — see [setup.md](setup.md).
 
 ## The other exit: graduation
 

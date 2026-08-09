@@ -46,8 +46,16 @@ closure without anyone noticing.
 
 `gh` emits CRLF. Strip `\r` at the boundary where you parse its output, once, and never
 build a downstream argument from unstripped text. It fails loudly when the `\r` lands in a
-URL, which is the good case; the bad case is the same `\r` reaching a `summary` value,
-where quoting faithfully preserves it and no diff will show you.
+URL; a `\r` reaching a `summary` value is now a validation error rather than an invisible
+character, so `add` refuses the entry — which is the point of the rule, but it means the
+strip has to happen and it has to happen in one nameable place.
+
+That rule has a second edge, and it is the one nothing can catch for you: **on Windows the
+`npx` shim drops a newline inside an argument along with every argument after it.** A
+summary built from unstripped multi-line text arrives truncated, the flags that followed it
+are silently never applied, and the command prints `Added` and exits 0. The dropped
+arguments never reach the process, so no amount of care inside the tool helps. Strip line
+terminators before you build the argument.
 
 Titles are full of `&`, `|`, `<`, `>`, quotes and — the expensive one — leading and
 trailing whitespace. Pass them as arguments, not through a shell; the emitter double-quotes
