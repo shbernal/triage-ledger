@@ -27,7 +27,16 @@ import {
 	VOCABULARY_LISTS,
 	isRequiredAtClass,
 } from './model.mjs'
-import { hasOwn, indexLedger, isEmptyValue, isIsoDate, isMapping, parseLedgerText, vocabularyEntryName } from './ledger.mjs'
+import {
+	hasOwn,
+	indexLedger,
+	isEmptyValue,
+	isIsoDate,
+	isMapping,
+	parseLedgerText,
+	todayIsoDate,
+	vocabularyEntryName,
+} from './ledger.mjs'
 
 class Report {
 	constructor() {
@@ -47,6 +56,46 @@ class Report {
 
 function itemLabel(item, index) {
 	return typeof item?.id === 'string' && item.id ? item.id : 'items[' + index + ']'
+}
+
+/**
+ * The latest date a ledger may claim: tomorrow.
+ *
+ * One day of slack, and it is not politeness. These dates are calendar dates with no zone
+ * (§3), so a ledger written at 09:00 in UTC+13 carries a date the validator in UTC calls
+ * tomorrow, and a rule with no tolerance would fail a build for being east of London.
+ * Beyond a day the excuse runs out — no timezone is 48 hours wide.
+ */
+function latestDate(today) {
+	return new Date(Date.parse(today) + 86400000).toISOString().slice(0, 10)
+}
+
+/**
+ * Dates that describe work that has not happened.
+ *
+ * The tell this protects is `stats`'s days-since-last-triage-activity, which is the only
+ * instrument pointed at a triage that was quietly abandoned — and a `last_reviewed` in the
+ * future turns it negative and keeps the stall warning from ever firing. The ordering rule
+ * is the same mistake read the other way: an entry cannot have been reviewed before this
+ * project first saw it.
+ *
+ * Note which direction time moves these: a future date becomes a past one, so a ledger
+ * that validates today still validates tomorrow. The rule can only ever let more through.
+ */
+function validateItemDates(report, item, label, today) {
+	const limit = latestDate(today)
+	for (const field of ['first_seen', 'last_reviewed']) {
+		if (!isIsoDate(item[field]) || item[field] <= limit) continue
+		report.error(
+			label + ': `' + field + '` is ' + item[field] + ', which has not happened yet — a ledger records what was done, not what is planned'
+		)
+	}
+	if (isIsoDate(item.first_seen) && isIsoDate(item.last_reviewed) && item.last_reviewed < item.first_seen) {
+		report.error(
+			label + ': `last_reviewed` (' + item.last_reviewed + ') is before `first_seen` (' + item.first_seen +
+				') — nobody reviewed this before the project had it'
+		)
+	}
 }
 
 /**
@@ -118,7 +167,7 @@ function validateSourceKinds(report, index) {
  * the predicate rather than a description of it — six months on, a reader has to be able
  * to tell "we triaged this backlog" from "we triaged the last three years of it".
  */
-function validateUpstream(report, index) {
+function validateUpstream(report, index, today) {
 	const upstream = index.data?.upstream
 	// The trigger is an *entry* that carries external provenance, not a declared kind that
 	// could. A freshly written ledger declares issue and pull-request kinds and holds
@@ -138,6 +187,9 @@ function validateUpstream(report, index) {
 	}
 	if (typeof upstream.repo !== 'string' || upstream.repo === '') report.error('upstream.repo must be a non-empty string')
 	if (!isIsoDate(upstream.imported_at)) report.error('upstream.imported_at must be YYYY-MM-DD')
+	else if (upstream.imported_at > latestDate(today)) {
+		report.error('upstream.imported_at is ' + upstream.imported_at + ', which has not happened yet — this block records an import that ran')
+	}
 	if (typeof upstream.filter !== 'string' || upstream.filter === '') {
 		report.error('upstream.filter must record the exact predicate applied, as a string (use `none` if you took everything)')
 	}
@@ -271,6 +323,20 @@ function validateReasons(report, index) {
 				}
 			}
 		}
+
+		// Same key, same meaning, as on a declared field (§7) — a reason whose sentence is only
+		// true of some kinds of entry says which. Until this existed, the restriction could be
+		// written and was inert, so the ledger that reached hardest for the right constraint got
+		// the least of it.
+		if (hasOwn(entry, 'types')) {
+			if (!Array.isArray(entry.types) || entry.types.length === 0) {
+				report.error(label + ': `types` must be a non-empty list of declared entry types')
+			} else {
+				for (const type of entry.types) {
+					if (!index.sourceKinds.has(type)) report.error(label + ': `types` names an undeclared entry type: ' + type)
+				}
+			}
+		}
 	}
 }
 
@@ -398,6 +464,12 @@ function validateDismissal(report, index, item, label) {
 			report.error(label + ': undeclared dismissal reason: ' + name)
 			continue
 		}
+		if (Array.isArray(reason.types) && reason.types.length > 0 && !reason.types.includes(item.type)) {
+			report.error(
+				label + ': dismissal reason `' + name + '` is declared only for types ' + reason.types.join(', ') + ', not `' + item.type +
+					'` — its sentence is not true of this kind of entry'
+			)
+		}
 		const demanded = Array.isArray(reason.requires_evidence) ? reason.requires_evidence : []
 		for (const required of demanded) {
 			if (!kinds.has(required)) {
@@ -493,7 +565,7 @@ function validateOmission(report, index, item, label, cls) {
 	}
 }
 
-function validateItem(report, index, item, position) {
+function validateItem(report, index, item, position, today) {
 	const label = itemLabel(item, position)
 	if (!isMapping(item)) {
 		report.error(label + ': item must be a mapping')
@@ -525,6 +597,7 @@ function validateItem(report, index, item, position) {
 	if (hasOwn(item, 'last_reviewed') && !isEmptyValue(item.last_reviewed) && !isIsoDate(item.last_reviewed)) {
 		report.error(label + ': `last_reviewed` must be YYYY-MM-DD')
 	}
+	validateItemDates(report, item, label, today)
 
 	validateItemIdentity(report, index, item, label)
 
@@ -597,32 +670,37 @@ function validateUniqueIds(report, items) {
 
 // ------------------------------------------------------------------------- entry point
 
-/** Validate already-parsed ledger data. Pure and synchronous. */
-export function validateLedgerData(data) {
+/**
+ * Validate already-parsed ledger data. Pure and synchronous.
+ *
+ * `today` is an argument rather than a call to the clock so that this stays pure and so a
+ * test can say what "the future" is without writing a date that stops being one.
+ */
+export function validateLedgerData(data, { today = todayIsoDate() } = {}) {
 	const report = new Report()
 	if (!validateRoot(report, data)) return report
 	const index = indexLedger(data)
 	validateSourceKinds(report, index)
-	validateUpstream(report, index)
+	validateUpstream(report, index, today)
 	validateVocabularyShape(report, index)
 	validateStatuses(report, index)
 	validateReasons(report, index)
 	validateEvidenceKinds(report, index)
 	validateFieldDeclarations(report, index)
 	validateUniqueIds(report, index.items)
-	index.items.forEach((item, position) => validateItem(report, index, item, position))
+	index.items.forEach((item, position) => validateItem(report, index, item, position, today))
 	return report
 }
 
 /** Validate ledger text: parse errors, data rules, and the rules only the document can answer. */
-export function validateLedgerText(text) {
+export function validateLedgerText(text, options) {
 	const parsed = parseLedgerText(text)
 	if (parsed.errors.length > 0) {
 		const report = new Report()
 		for (const error of parsed.errors) report.error(error)
 		return { data: null, doc: null, report }
 	}
-	const report = validateLedgerData(parsed.data)
+	const report = validateLedgerData(parsed.data, options)
 	validateSummaryQuoting(report, parsed.doc)
 	return { data: parsed.data, doc: parsed.doc, report }
 }

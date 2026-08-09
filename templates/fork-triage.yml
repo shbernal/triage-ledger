@@ -149,6 +149,7 @@ vocabulary:
         not occur. Distinct from stale-no-repro, where nobody attempted one.
       about: item-state
       retire_to: null            # evaporates; git history is enough
+      types: [issue, todo]       # something has to have claimed a behaviour
       # Reading the code and concluding it should work is not evidence that it does.
       requires_evidence: [repro]
 
@@ -159,6 +160,13 @@ vocabulary:
         one demands no evidence.
       about: item-state
       retire_to: null            # evaporates; git history is enough
+      # The two cheapest reasons in this file are the two that carry `types`, and that is
+      # not a coincidence. This one costs nothing at all — no destination, no evidence —
+      # so it is what a tired triager reaches for at entry 300, and "nobody ever provided
+      # a reproduction" is *vacuously* true of a feature request and of a pull request.
+      # True and empty is the failure this key exists to stop, and it is the only one the
+      # format can catch: a sentence that is not about this kind of entry.
+      types: [issue]
 
     - reason: superseded-upstream
       describes: >

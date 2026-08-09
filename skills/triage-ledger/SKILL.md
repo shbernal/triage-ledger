@@ -56,6 +56,16 @@ of them. If one fits, use it. If you genuinely need a new one, add it **in the s
 that first uses it**, write a `describes` of the form *"distinct from X, because Y"*, and
 say in your message why the existing reasons did not fit.
 
+**A reason that is true of everything is worth nothing.** The rule above is about not
+minting synonyms; this is its opposite failure, and it is the one an agent under time
+pressure commits. The cheapest reasons in any vocabulary — no `requires_evidence`, and
+`retire_to: null` — are the ones a bulk transition reaches for, and what they produce is
+not a false claim that somebody would catch. It is a *true and empty* one: "no reproduction
+was ever provided" is true of a feature request the way it is true of a rock. Before
+dismissing a batch, read the reason's own sentence aloud against one of the entries. If it
+does not say something about *that* entry, it is the wrong reason, however legal the file
+is afterwards.
+
 **Never assert something you did not check.** A reason may declare
 `requires_evidence: [...]`, and where it does, that is a hard-won lesson someone wrote down.
 Reading the source and concluding something *should* work is not evidence that it *does*.
@@ -96,6 +106,11 @@ Hand-edit, carefully, the way a human would:
 - When you change a decision, remove the one you are replacing. A dismissal reason on an
   entry you have just accepted, or a `next_action` on one you have just dismissed, makes
   the entry assert both.
+- Write today's date, never a later one. `last_reviewed` is what "how long has this been
+  silent" is computed from, and a date that has not happened makes an abandoned triage
+  read as a fresh one. It must also not precede the entry's `first_seen`.
+- Delete an entry only once it is terminal. Removing an undecided one leaves a ledger that
+  validates, owes nothing, and is ready to retire — having decided nothing.
 - Re-read the file after editing and check it against `SPEC.md` yourself.
 
 ## Referring to an entry from source code

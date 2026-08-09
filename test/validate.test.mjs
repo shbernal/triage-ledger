@@ -509,3 +509,105 @@ test('a YAML error says where, because the parser knows and we were throwing it 
 	// The position is given once, not twice — `prettyErrors` also writes it into the prose.
 	assert.ok(!errors.some((e) => / at line \d+, column \d+/.test(e)), errors.join('\n'))
 })
+
+test('a ledger cannot record work that has not happened yet', () => {
+	// `last_reviewed` is what days-since-last-triage-activity is computed from, and that
+	// number is the only signal a project gets that its triage was quietly abandoned. A date
+	// in the future does not merely record something false — it makes the signal read fresh,
+	// for as long as the writer cares to type.
+	const future = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: needs-triage
+    first_seen: 2026-01-01
+    last_reviewed: 2027-12-31
+`
+	)
+	const errors = validateLedgerText(future, { today: '2026-08-09' }).report.errors
+	assert.equal(errors.length, 1, errors.join('\n'))
+	assert.match(errors[0], /`last_reviewed` is 2027-12-31, which has not happened yet/)
+
+	// One day of slack, and it is load-bearing rather than polite: these are calendar dates
+	// with no zone, so a ledger written in the morning in UTC+13 is dated tomorrow to a
+	// validator running in UTC. Two days is not a timezone.
+	const tomorrow = future.replace('2027-12-31', '2026-08-10')
+	assert.deepEqual(validateLedgerText(tomorrow, { today: '2026-08-09' }).report.errors, [])
+	const dayAfter = future.replace('2027-12-31', '2026-08-11')
+	assert.equal(validateLedgerText(dayAfter, { today: '2026-08-09' }).report.errors.length, 1)
+
+	// And the rule can only ever let more through: a future date becomes a past one, so a
+	// ledger that validates today still validates later.
+	assert.deepEqual(validateLedgerText(future, { today: '2028-01-01' }).report.errors, [])
+})
+
+test('nobody reviewed an entry before the project had it', () => {
+	const backwards = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: needs-triage
+    first_seen: 2026-01-01
+    last_reviewed: 1999-01-01
+`
+	)
+	const errors = validateLedgerText(backwards, { today: '2026-08-09' }).report.errors
+	assert.equal(errors.length, 1, errors.join('\n'))
+	assert.match(errors[0], /`last_reviewed` \(1999-01-01\) is before `first_seen` \(2026-01-01\)/)
+
+	// Backdating on its own is legitimate and stays so — a triage session that happened last
+	// week is recorded as last week. Only the impossible ordering is an error.
+	assert.deepEqual(
+		validateLedgerText(backwards.replace('1999-01-01', '2026-01-01'), { today: '2026-08-09' }).report.errors,
+		[]
+	)
+})
+
+test('a dismissal reason whose sentence is only true of some entries says which', () => {
+	// The cheapest reason in a vocabulary is what a tired triager reaches for at entry 300,
+	// and the failure it produces is not a false statement but a vacuous one: "nobody ever
+	// provided a reproduction" is true of a feature request the way it is true of a rock.
+	// The type mismatch is the only part of that a validator can see.
+	const typed = LEDGER.replace(
+		'      requires_evidence: [repro]',
+		'      requires_evidence: [repro]\n      types: [chore]'
+	).replace('source_kinds:\n  - type: todo', 'source_kinds:\n  - type: todo\n  - type: chore')
+	const dismissed = replaceItems(
+		typed,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: dropped
+    first_seen: 2026-01-01
+    last_reviewed: 2026-02-02
+    non_target_reasons: [no-repro]
+    evidence:
+      kinds: [repro]
+      result: fail
+`
+	)
+	const errors = errorsFor(dismissed)
+	assert.equal(errors.length, 1, errors.join('\n'))
+	assert.match(errors[0], /is declared only for types chore, not `todo`/)
+
+	// The same entry under a reason carrying no restriction is fine — most reasons should
+	// carry none, because a scope decision is about the ask and not about how it arrived.
+	assert.deepEqual(errorsFor(dismissed.replace('      types: [chore]\n', '')), [])
+})
+
+test('a reason cannot restrict itself to a type nothing declares', () => {
+	const bogus = LEDGER.replace('      about: item-state', '      about: item-state\n      types: [nonexistent]')
+	assert.ok(
+		errorsFor(bogus).some((e) => /`types` names an undeclared entry type: nonexistent/.test(e)),
+		errorsFor(bogus).join('\n')
+	)
+	// Empty is not a restriction, it is a mistake — and read as "no types at all" it would
+	// silently forbid every dismissal under the reason.
+	const empty = LEDGER.replace('      about: item-state', '      about: item-state\n      types: []')
+	assert.ok(errorsFor(empty).some((e) => /`types` must be a non-empty list/.test(e)), errorsFor(empty).join('\n'))
+})

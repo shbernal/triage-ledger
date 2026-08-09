@@ -228,3 +228,28 @@ Three things in the design push against it, and they only work if you let them:
 If it does stall, the honest move is not to leave the file sitting there. Retire what can
 be retired, write the summary saying how far you got and what the filter was, and delete
 the rest.
+
+### The other shape of the same failure, and what actually catches it
+
+A stalled ledger at least looks stalled. The version that does not is a ledger *emptied*
+without being decided — and there are only two ways to do it, both of them one command:
+dismiss everything under the cheapest reason in your vocabulary, or remove the entries that
+have not been decided. Both leave a file that validates and reports nothing outstanding.
+
+What catches it is not the validator, and knowing that is the point of this section:
+
+- **`retire --distil` is the instrument.** It is the only command that shows what was
+  actually decided, grouped by reason — and its output shrinks as the shortcut gets more
+  thorough, so a nearly-blank page from a project that triaged six hundred entries is the
+  finding rather than the absence of one. Run it before you delete anything, and read it.
+- **The `upstream:` block is the denominator.** Without it, nothing in the file records how
+  many entries ever arrived, and a ledger that was emptied is indistinguishable from one
+  that was small. Fill it in at seeding time; that is what makes the summary's counts
+  checkable later.
+- **The diff and the commit message.** Removals are the one operation this format prices at
+  nothing, because removal is what retirement is made of. Naming removed ids in the prune
+  commit is what leaves a trail.
+
+None of that is a check you can wire into CI, and no version of it could be — the file
+holds one state and every one of these questions is about two. Which is why the retirement
+summary is a document a person puts their name to, and not a number a tool reports.

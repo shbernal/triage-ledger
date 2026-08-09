@@ -13,6 +13,18 @@ Two conditions: no entry in a non-terminal class, and every declared `retire_to`
 destination exists on disk. If a destination is missing, create the document — that is not
 a formality. It is the whole mechanism.
 
+**A green check is a smaller claim than it sounds.** It verifies that a path resolves, not
+that anything is written at it — and it cannot verify more, because it runs *before* step 2
+produces the sentences. Come back and read each destination after distilling. An existing
+file that never got its paragraph is exactly what this check cannot see, and the reason it
+now says so in its own output.
+
+If the check refuses because the ledger does not validate, fix that first and do not work
+around it. The way this file reaches a state that is invalid *and* reports nothing
+outstanding is a status whose `class` is wrong — which makes every entry terminal and every
+entry incomplete at the same time, and only one of those two facts is visible in a
+burn-down.
+
 ## 2. Distil, per *reason* — not per item
 
 ```sh
@@ -51,8 +63,10 @@ nothing and buys trust.
 **Draft it before you prune.** The kept count is a count of entries still in the file, and
 step 4's rule removes exactly the ones that count as kept — so run this against a ledger
 that still holds them, or read the number out of `git log -- <ledger>`. Run after pruning
-it will tell you nine were dropped and none kept, for a triage that implemented five, and
-there will be nothing left in the file to notice with.
+it will tell you nine were dropped and none kept, for a triage that closed five. Where the
+ledger has an `upstream:` block the draft now says how many are missing from its own
+counts, because that block records how many arrived; where it does not, nothing can tell,
+and the ordering is the only protection you have.
 
 The summary is also the document most likely to name this tool, and it is written after the
 teardown list has been walked. Include it when you check step 6.
@@ -65,6 +79,13 @@ In this order, and in **two commits**:
    state of the ledger is `items: []`, then delete the file. Both halves matter: a file
    deleted with nine entries in it is textually indistinguishable from a file *abandoned*
    with nine entries in it, and telling those apart is the entire product.
+
+   **Filter on class, and never on anything looser.** Removing an entry that has not
+   reached a terminal class deletes the question rather than recording the answer, and it
+   leaves a ledger that validates, owes nothing and passes every retirement check for a
+   project that decided nothing. `remove` will say so; do not run past it. If entries are
+   left that nobody wants to decide, the honest move is to park them, which blocks
+   retirement — because an unmade decision should.
 2. Remove the CI line that ran `validate`.
 3. Remove the pointer in `AGENTS.md` (or equivalent).
 4. `npx skills remove triage-ledger`, then delete what it leaves: `skills-lock.json` at the

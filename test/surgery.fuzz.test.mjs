@@ -316,7 +316,12 @@ test('a random mutation sequence disturbs nothing it was not aimed at', () => {
 					} else {
 						const move = statusMove(rng, state.vocab, target)
 						if (!move) continue
-						const reviewDate = pick(rng, DATES)
+						// Not any date: a review cannot predate the entry. The fuzzer used to draw
+						// freely from DATES and so generated ledgers nothing could have produced,
+						// which is only visible now that §3 orders the two fields. Drawn from the
+						// same list filtered, so the variety survives — `first_seen` is itself in
+						// DATES, so the filtered list is never empty.
+						const reviewDate = pick(rng, DATES.filter((date) => date >= target.first_seen))
 						log.push('status ' + target.id + ' -> ' + move.status)
 						after = setLedgerItemStatusText(before, target.id, move.status, { reviewDate, fields: move.fields })
 						const patch = { status: move.status, last_reviewed: reviewDate, ...move.fields }

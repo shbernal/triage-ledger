@@ -128,6 +128,7 @@ vocabulary:
     #     Distinct from stale-no-repro, where nobody tried.
     #   about: item-state
     #   retire_to: null    # evaporates; git history is enough
+    #   types: [todo]      # only where the entry claimed a behaviour in the first place
 
   # EVIDENCE KINDS. Nothing reaches class `accepted` without at least one. This is the
   # other half of the two-sided cost: dismissal costs a destination, acceptance costs

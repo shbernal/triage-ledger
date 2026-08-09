@@ -63,6 +63,21 @@ npx triage-ledger@0.1 set-status --to <status> --reason <reason> --search "IE11"
 Always dry-run first and read the ids. On `set-status`, `--reason` *sets* the reason; use
 `--status`, `--class` or `--search` to select what to transition.
 
+**Read what a batch would claim before you run it, not just how many it matches.** The
+reasons that cost least — no `requires_evidence`, `retire_to: null` — are the ones a batch
+naturally reaches for, and the failure they produce is not a false statement, which somebody
+would catch. It is a *true and empty* one. "No reproduction was ever provided" is perfectly
+true of a feature request, in the way that it is true of a rock, and an entry dismissed that
+way is legal, validates, and tells a future reader nothing at all. If a reason declares
+`types`, the tool will refuse the mismatch it can see; the rest is yours. The test is
+whether the reason's own sentence, read aloud against this entry, says something about
+*this* entry.
+
+Two questions worth asking of a batch that matches most of the ledger: is it one decision or
+several wearing one name, and would the distilled sentence at retirement be worth reading?
+A reason covering everything distils to a sentence that says nothing, and there is no
+recovering that later — the entries are gone by then.
+
 ## Inherited pull requests
 
 An open PR contains code, so the first question looks like "does the diff still apply?" —
@@ -86,6 +101,12 @@ Days-since-last-triage-activity is the number that matters. A stalled triage is 
 silence is the failure this whole phase is designed against. If it is climbing and the
 outstanding count is not falling, say so out loud rather than quietly continuing — the
 honest options are to pick it back up or to retire what can be retired and delete the rest.
+
+That number is computed from `last_reviewed`, so leave `--date` alone unless you are
+recording a session that genuinely happened on another day — and then only a day that has
+been. A date in the future makes the one instrument pointed at this failure read as fresh;
+the format now refuses it, and the reason it is worth knowing anyway is that reaching for it
+is a sign the answer you want is "we are still on this" rather than "we are not".
 
 ## Changing a decision is normal; say what you are replacing
 

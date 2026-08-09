@@ -122,7 +122,12 @@ test('a full lifecycle runs without the file being hand-edited once', async () =
 			)
 		)
 
-		await ok(['add', '--id', 'todo-2', '--source', 'local', '--type', 'todo', '--status', 'needs-triage', '--summary', 'second'])
+		// `--first-seen` is explicit here, and it has to be: the review below is backdated to
+		// February, and an entry seeded today cannot have been reviewed then (§3).
+		await ok([
+			'add', '--id', 'todo-2', '--source', 'local', '--type', 'todo',
+			'--status', 'needs-triage', '--summary', 'second', '--first-seen', '2026-01-02',
+		])
 		assert.match(await ok(['next', '2']), /todo-1/)
 		await ok(['set-status', 'todo-2', 'non-target', '--reason', 'out-of-scope', '--date', '2026-02-02'])
 		await ok([
@@ -339,5 +344,182 @@ test('validate exits non-zero on errors and zero with only warnings', async () =
 		const text = await fs.readFile('docs/backlog.yml', 'utf8')
 		await fs.writeFile('docs/backlog.yml', text.replace('schema: 1', 'schema: 2'))
 		assert.equal(await run(['validate'], capture().io), 1)
+	})
+})
+
+/** A fork-triage ledger with one entry of each type, seeded and undecided. */
+async function seedForkLedger() {
+	await run(['init', '--profile', 'fork-triage'], capture().io)
+	const text = await fs.readFile('docs/backlog.yml', 'utf8')
+	await fs.writeFile(
+		'docs/backlog.yml',
+		text.replace(
+			/^vocabulary:/m,
+			`upstream:
+  repo: acme/renderer
+  imported_at: 2026-01-01
+  filter: 'updated_at >= 2023-01-01'
+  matched: 2
+  skipped: 8
+  total_open: 10
+
+vocabulary:`
+		)
+	)
+	for (const [id, source, type] of [
+		['upstream-issue-1', 'acme/renderer#1', 'issue'],
+		['upstream-pr-2', 'acme/renderer#2', 'pull-request'],
+	]) {
+		await run(
+			['add', '--id', id, '--source', source, '--type', type, '--status', 'needs-triage',
+				'--summary', 'a thing', '--first-seen', '2026-01-01', ...(type === 'pull-request' ? ['--set', 'upstream_patch=not-assessed'] : [])],
+			capture().io
+		)
+	}
+}
+
+test('the shipped reproduction reasons are not usable on a pull request', async () => {
+	// The cheapest reason in the shipped vocabulary costs nothing — no destination, no
+	// evidence — so it is the one a whole backlog goes into if it goes anywhere at once.
+	// "No reproduction was ever provided" is *vacuously* true of a pull request, and a
+	// reviewer reading that diff sees a legal reason on a legal entry.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		const { io, out } = capture()
+		await assert.rejects(
+			run(['set-status', 'upstream-pr-2', 'non-target', '--reason', 'stale-no-repro'], io),
+			/declared only for types issue, not `pull-request`/,
+			out.join('\n')
+		)
+		// And the same reason on the entry type it *is* about goes through untouched.
+		assert.equal(await run(['set-status', 'upstream-issue-1', 'non-target', '--reason', 'stale-no-repro'], capture().io), 0)
+	})
+})
+
+test('the gate refuses to answer for a ledger that does not validate', async () => {
+	// One word of project data — a status classed `dismissed` instead of `untriaged` —
+	// makes every entry terminal and every entry invalid at the same time, and only one of
+	// those two facts used to reach the reader. `retire --check` is what a project puts in
+	// front of teardown, so "ready" is the one answer it must not give here.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		const text = await fs.readFile('docs/backlog.yml', 'utf8')
+		await fs.writeFile(
+			'docs/backlog.yml',
+			text.replace(/- status: needs-triage(\r?\n\s+)class: untriaged/, '- status: needs-triage$1class: dismissed')
+		)
+
+		const { io, out } = capture()
+		assert.equal(await run(['retire', '--check'], io), 1)
+		assert.match(out.join('\n'), /does not validate \(4 error\(s\)\)/)
+		assert.doesNotMatch(out.join('\n'), /Ready to retire/)
+
+		// The other two modes still answer, because a broken ledger is exactly when you want
+		// to look at it — but they say what they are reading from.
+		const distil = capture()
+		assert.equal(await run(['retire', '--distil'], distil.io), 0)
+		assert.match(distil.err.join('\n'), /does not validate/)
+	})
+})
+
+test('the gate says a path check is not a content check', async () => {
+	// `retire_to` is verified by resolving a path, and it cannot be verified further here:
+	// this gate runs *before* `--distil` produces the sentences. A reason pointed at a file
+	// that never got its paragraph passes, so the words have to stop claiming otherwise.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(['set-status', 'upstream-issue-1', 'non-target', '--reason', 'stale-no-repro'], capture().io)
+		await run(['set-status', 'upstream-pr-2', 'non-target', '--reason', 'out-of-project-scope'], capture().io)
+		// Every declared destination, not only the ones this ledger used — completeness is
+		// checked against the vocabulary. Both files exist and neither mentions a decision.
+		await fs.writeFile('docs/project-target.md', '# Nothing about any of this\n')
+		await fs.writeFile('docs/architecture.md', '# Also nothing\n')
+
+		const { io, out } = capture()
+		assert.equal(await run(['retire', '--check'], io), 0)
+		const text = out.join('\n')
+		assert.match(text, /every declared `retire_to` path resolves/)
+		assert.match(text, /path check and not a content check/)
+	})
+})
+
+test('removing an entry nobody decided says so', async () => {
+	// Pruning and deleting the question are the same command. §6 sanctions removing a
+	// terminal entry — the decision is in the commit and the file is meant to shrink — and
+	// removing anything else leaves a ledger that validates, owes nothing, and is ready to
+	// retire having decided nothing. A warning rather than a refusal: removing something
+	// that should never have been seeded is legitimate, and refusing sends that edit to a
+	// text editor where it is done less carefully.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(['set-status', 'upstream-issue-1', 'non-target', '--reason', 'stale-no-repro'], capture().io)
+
+		const decided = capture()
+		assert.equal(await run(['remove', 'upstream-issue-1'], decided.io), 0)
+		assert.doesNotMatch(decided.err.join('\n'), /deletes the question/)
+
+		const undecided = capture()
+		assert.equal(await run(['remove', 'upstream-pr-2'], undecided.io), 0)
+		const warning = undecided.err.join('\n')
+		assert.match(warning, /never decided, so removing it deletes the question/)
+		assert.match(warning, /upstream-pr-2 {2}\[needs-triage\]/)
+	})
+})
+
+test('nothing to distil is said out loud, because that is how a gamed ledger ends', async () => {
+	// Every thorough way of emptying this file without deciding anything arrives here:
+	// delete the entries and there is nothing to group, mistype a class and every entry is
+	// terminal and none is dismissed. Printing the preamble and stopping reads as "done",
+	// and hands the writer a blank page to draft the record from.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(['remove', '--class', 'untriaged'], capture().io)
+
+		const { io, out } = capture()
+		assert.equal(await run(['retire', '--distil'], io), 0)
+		const text = out.join('\n')
+		assert.match(text, /Nothing to distil: no entry in this ledger carries a dismissal reason/)
+		assert.match(text, /entries were removed rather than decided/)
+		assert.match(text, /git log -- docs\/backlog\.yml/)
+	})
+})
+
+test('the retirement summary counts what was pruned, because the upstream block knows', async () => {
+	// The kept count is drawn from entries still in the file, and §6 tells you to prune each
+	// entry as it closes — so following both rules in the obvious order reports the opposite
+	// of what happened. Warning about that in prose was the old fix; `upstream.matched` is
+	// the number that was imported and it is in the same sentence.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(
+			['set-status', 'upstream-issue-1', 'implemented', '--next-action', 'none',
+				'--evidence', 'source-read', '--local-file', 'src/a.ts', '--date', '2026-02-02'],
+			capture().io
+		)
+		// A scope reason, not a reproduction one — the shipped reproduction reasons now decline
+		// to be applied to a pull request, which is the point of the rule two tests up.
+		await run(['set-status', 'upstream-pr-2', 'non-target', '--reason', 'out-of-project-scope', '--date', '2026-02-02'], capture().io)
+
+		const before = capture()
+		await run(['retire', '--summary'], before.io)
+		assert.match(before.out.join('\n'), /Kept 1, dropped 1\./)
+		assert.doesNotMatch(before.out.join('\n'), /already been pruned/)
+
+		await run(['remove', 'upstream-issue-1'], capture().io)
+		const after = capture()
+		await run(['retire', '--summary'], after.io)
+		const text = after.out.join('\n')
+		// The count still reads 0, and it has to — the entry is gone. What is new is that the
+		// draft says so, in the sentence somebody is about to paste into their own docs.
+		assert.match(text, /Kept 0, dropped 1\./)
+		assert.match(text, /A further 1 entry has already been pruned from this ledger/)
+		assert.match(text, /git log -- docs\/backlog\.yml/)
+
+		const { io, out } = capture()
+		await run(['retire', '--summary', '--json'], io)
+		const payload = JSON.parse(out.join('\n'))
+		assert.equal(payload.pruned, 1)
+		assert.equal(payload.imported, 2)
+		assert.equal(payload.stillPresent, 1)
 	})
 })

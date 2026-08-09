@@ -34,6 +34,13 @@ class `done` only what will have files to name. "Covered by something else" read
   (something about *this* project).
 - `retire_to` — where the finding lives once the ledger is deleted.
 
+And a fourth where it applies: `types`, a list of declared entry types the reason may be
+used on. Most reasons should not carry it — a scope decision is about the ask, not about how
+the ask arrived. Reach for it when the reason's sentence is only *about* one kind of entry:
+anything phrased around a reproduction is about something that claimed a behaviour, so it
+says nothing whatever about a pull request. That is the one form of a meaningless dismissal
+a validator can catch, which is why the format offers a key for it and nothing else.
+
 **On `retire_to: null`.** It means "this evaporates; git history is enough", and it is
 honest for `item-state` reasons: nobody needs a permanent document saying that one
 particular report was never reproducible. It is not available for `project-policy` reasons,

@@ -269,6 +269,23 @@ format. The only questions anyone asks of these fields are *what has sat here lo
 and *when did anyone last look at this*, and in that form both are string comparisons
 that sort correctly and that a human reads without conversion. A ledger is not a log.
 
+**No date in the ledger may describe work that has not happened.** `first_seen`,
+`last_reviewed` and `upstream.imported_at` **MUST NOT** be later than today, and
+`last_reviewed` **MUST NOT** be earlier than the same entry's `first_seen` — nobody
+reviewed an entry before this project had it. A validator **SHOULD** allow one day of
+slack on the first rule: these are calendar dates with no zone, so a ledger written in the
+morning in UTC+13 carries a date that is tomorrow to a validator running in UTC, and a
+rule with no tolerance fails a build for being east of London. Nothing is 48 hours wide.
+
+The rule reads like bookkeeping and is not. `last_reviewed` is what "when did anyone last
+look at this" is computed from, and that number is the only signal a project gets that a
+triage was quietly abandoned — a ledger nobody has touched in four months is worse than no
+ledger, because it implies coverage that does not exist. A date in the future does not
+merely record something false; it makes the signal read as *fresh*, permanently, for one
+flag's worth of effort. Note also which way time moves this: a future date becomes a past
+one, so a ledger that validates today still validates tomorrow. The rule can only ever let
+more through.
+
 `id` **MUST** be unique across the ledger. It is the entry's only handle: the prune
 commit names it, a source comment may be tagged with it, and teardown is a grep for it
 (§6). Two entries sharing one make every one of those ambiguous, and the moment it can
@@ -652,6 +669,22 @@ git history.
 Without this rule, retirement is a file move, and your two hundred dismissals become two
 hundred lines somewhere else.
 
+**And nothing verifies that the sentence got written.** A destination is checkable to the
+extent that a path resolves, which is what "checkable" above means and all it means: a
+reason pointed at a `README.md` that has never mentioned it passes every check in this
+document. Nor can that be tightened by checking harder, because of the order the steps run
+in — the preconditions are checked, *then* the entries are distilled, *then* the ledger is
+deleted. The gate runs before the sentences exist. A tool reporting those preconditions
+**SHOULD** say which of the two it verified, so that "every destination exists" is not read
+as "every destination says something".
+
+So the dismissal half of the two-sided cost is enforced everywhere except at the end: the
+reason must be declared before it is used, `about` constrains whether it may evaporate, the
+destination must exist — and then a human writes the paragraph, or does not. That is not a
+gap to be closed by a better validator. It is where this format stops and the person
+retiring the project starts, and the honest thing is to say so here rather than let a green
+check imply otherwise.
+
 ### Keep the integration surface enumerable
 
 Everything this system touches in your repository **MUST** be something you can list:
@@ -732,6 +765,24 @@ closed the entry are the same diff.
 A prune commit **SHOULD** name each removed id and the commit that closed it; the
 message is the index back into history. The final deletion commit **SHOULD** name the
 retirement summary document.
+
+**Prune only what is terminal.** An entry removed before it reached a terminal class is
+not pruned; the question is deleted, and the answer was never written. Nothing downstream
+can tell the difference — the ledger validates, `items` is shorter, nothing is outstanding,
+and every retirement precondition is met by a project that decided nothing. A tool
+performing a removal **SHOULD** say so when the entry is not terminal. It is a SHOULD
+rather than a MUST because removing an entry that should never have been seeded is
+legitimate and common, and a refusal would push that edit into a text editor where it is
+done less carefully.
+
+This is the sharpest form of a limit worth stating plainly: **an empty ledger is the goal
+and also the easiest thing to fake.** Everything in this document prices the *transitions*
+out of `untriaged` — evidence, a destination, a next action — and none of it prices
+deletion, because deletion is the operation retirement is made of. The only defences are
+that the removal is a diff somebody can read, that the ids are named in the commit message
+(above), and that the distilled record at retirement will be empty. Which is why the
+retirement summary is a document a person signs their name under, and not a number a tool
+reports.
 
 ### Two people, one file
 
@@ -827,11 +878,40 @@ spec and concluding it *should* work is not evidence that it *does*; that is a l
 projects learn once, expensively, and then write in a comment where nothing can enforce
 it.
 
-### 3. Every dismissal reason declares its retirement destination
+### 3. A reason whose sentence is only true of some entries says which — `types`
+
+The same key as on a declared field, with the same meaning: a list of declared entry
+types, and the reason **MUST NOT** be applied to an entry of any other type. Optional, and
+most reasons should not carry it — a scope decision is about the ask, not about how the
+ask arrived.
+
+```yaml
+- reason: stale-no-repro
+  describes: >
+    No reproduction was ever provided and nothing has moved since the import window.
+  about: item-state
+  retire_to: null
+  types: [issue]
+```
+
+Two things make this worth a key rather than a note in the `describes`. The first is that
+the cheapest reasons in a vocabulary are the ones that attract volume: a reason with
+`retire_to: null` and no `requires_evidence` costs nothing to apply, so it is what gets
+reached for at entry 300, and it is where a whole backlog goes if it goes anywhere at once.
+
+The second is what makes it enforceable at all. Nothing in this format can tell whether a
+dismissal is *true* — and the failure that matters here is not a false statement anyway,
+it is a **vacuous** one. "No reproduction was ever provided" is true of a pull request and
+of a feature request, and it is true of them the way "this rock has never been convicted of
+perjury" is true. A reviewer reading the diff sees a legal reason on a legal entry and has
+nothing to point at. The type is the one part of that mismatch a validator can see, so it
+is the one part this format asks you to write down.
+
+### 4. Every dismissal reason declares its retirement destination
 
 `retire_to` and `about`, per §6. **MUST**, both of them.
 
-### 4. Reuse the closest existing term; never invent a synonym
+### 5. Reuse the closest existing term; never invent a synonym
 
 If nothing fits, extend the vocabulary **in the same edit** and say why.
 
@@ -986,7 +1066,7 @@ Three deliverables, three audiences, deliberately distinct:
 | Layer | Artifact | Carries |
 |---|---|---|
 | Human | **this document** | the method, normatively |
-| Agent | an agent skill | the judgment — §7's fourth requirement above all |
+| Agent | an agent skill | the judgment — §7's fifth requirement above all |
 | Machine | a CLI (`validate`, and the rest) | mechanical enforcement of the MUSTs |
 
 The division is not organizational tidiness; it is what keeps each layer honest. The

@@ -508,9 +508,37 @@ export async function commandRemove(options, io) {
 		if (ids.length === 0) throw new Error('no entries match that filter')
 	} else throw new Error('remove takes one entry id, or a filter')
 
+	// Pruning and deleting the question are the same command, and until now they read the
+	// same afterwards. §6 sanctions removing an entry that is *terminal* — the decision is in
+	// the commit, and the file is meant to shrink. Removing one that is not deletes the
+	// decision instead of recording it, and the ledger that results validates, reports
+	// nothing outstanding and is ready to retire.
+	//
+	// A warning rather than a refusal, for the reason §4 gives about hand edits: removing an
+	// entry that should never have been seeded — a duplicate, or something that turned out
+	// not to be a work item at all — is legitimate and common, and a refusal would send the
+	// writer to a text editor to do it less carefully. So this names them and gets out of the
+	// way. It is the last thing between an undecided backlog and a green gate, and it is
+	// advice; that is a limit worth knowing rather than one to paper over.
+	const undecided = ids
+		.map((id) => index.items.find((item) => item.id === id))
+		.filter((item) => item && !TERMINAL_CLASSES.has(index.classOfItem(item)))
+
 	let current = text
 	for (const id of ids) current = removeLedgerItemText(current, id)
 	await write(options, io, current, (options.dryRun ? 'remove ' : 'Removed ') + ids.length + ':\n  ' + ids.join('\n  '))
+	if (undecided.length > 0 && !options.json) {
+		const one = undecided.length === 1
+		io.stderr('')
+		io.stderr(
+			(one ? 'This entry was' : undecided.length + ' of these were') +
+				' never decided, so removing ' + (one ? 'it' : 'them') + ' deletes the question rather than recording the answer:'
+		)
+		for (const item of undecided.slice(0, 12)) io.stderr('  ' + item.id + '  [' + item.status + ']')
+		if (undecided.length > 12) io.stderr('  … ' + (undecided.length - 12) + ' more')
+		io.stderr('Pruning is for entries that reached a terminal status. Everything else leaves a')
+		io.stderr('ledger that validates, owes nothing and is ready to retire, having decided nothing.')
+	}
 	if (!options.json) {
 		// This used to be three fixed lines telling the reader to grep, printed whether or
 		// not there was anything to find — and a warning that always says the same thing
@@ -567,16 +595,45 @@ function distil(index) {
 }
 
 export async function commandRetire(options, io) {
-	const { index } = await loadLedger(options)
+	const { text, index } = await loadLedger(options)
+	// Every mode here reads a ledger that parses, which is not the same as one that is
+	// valid — `loadLedger` only stops at parse errors. A ledger with 48 validation errors
+	// still has statuses, so all three modes below will happily compute something from it.
+	const invalid = validateLedgerText(text).report
 
 	if (options.retireMode === 'check') {
+		// The gate refuses. `--check` is what a project automates in front of teardown, and
+		// answering "ready" about a file the validator rejects is the one wrong answer it can
+		// give: a status whose class was mistyped makes every entry terminal and every entry
+		// invalid at the same time, and only one of those two facts used to reach the reader.
+		if (!invalid.ok) {
+			const lines = [
+				'Not ready: this ledger does not validate (' + invalid.errors.length + ' error(s)).',
+				'Nothing below is trustworthy until it does — `triage-ledger validate` lists them.',
+			]
+			if (options.json) {
+				io.stdout(json({ ledger: options.ledger, ready: false, valid: false, errorCount: invalid.errors.length, errors: invalid.errors }))
+				return 1
+			}
+			io.stdout(lines.join('\n'))
+			return 1
+		}
 		const outstanding = outstandingItems(index)
 		// Destinations are repo-relative, like the paths a reader would type. Resolve them
 		// against the working directory, not against the ledger's own directory.
 		const missing = missingRetireDestinations(index.data, (relPath) => existsSync(path.resolve(process.cwd(), relPath)))
 		const ok = outstanding.length === 0 && missing.length === 0
 		if (options.json) {
-			io.stdout(json({ ledger: options.ledger, ready: ok, outstanding: outstanding.map((i) => ({ id: i.id, status: i.status })), missingDestinations: missing }))
+			io.stdout(
+				json({
+					ledger: options.ledger,
+					ready: ok,
+					valid: true,
+					outstanding: outstanding.map((i) => ({ id: i.id, status: i.status })),
+					missingDestinations: missing,
+					verified: 'every declared retire_to path resolves; not that anything is written there',
+				})
+			)
 			return ok ? 0 : 1
 		}
 		const lines = []
@@ -591,7 +648,18 @@ export async function commandRetire(options, io) {
 			lines.push('Declared retirement destinations that do not exist:')
 			for (const entry of missing) lines.push('  ' + entry.reason + ' → ' + entry.retire_to)
 		}
-		if (ok) lines.push('Ready to retire: nothing outstanding, every declared destination exists.')
+		if (ok) {
+			// Say what was checked, because the words "every declared destination exists" were
+			// doing more work in a reader's head than in the code. A path resolving is not a
+			// sentence written, and it cannot become one here: this gate runs *before*
+			// `--distil` produces the sentences, so nothing in the sequence ever verifies that
+			// the destination says anything. The reader is the only one who can.
+			lines.push('Ready to retire: nothing outstanding, and every declared `retire_to` path resolves.')
+			lines.push('')
+			lines.push('That is a path check and not a content check. `--distil` writes the sentences and')
+			lines.push('runs after this gate, so read each destination once more before you delete the')
+			lines.push('ledger — an existing file that never got its paragraph is what this cannot see.')
+		}
 		io.stdout(lines.join('\n'))
 		return ok ? 0 : 1
 	}
@@ -599,7 +667,27 @@ export async function commandRetire(options, io) {
 	if (options.retireMode === 'distil') {
 		const groups = distil(index)
 		if (options.json) {
-			io.stdout(json({ ledger: options.ledger, groups }))
+			io.stdout(json({ ledger: options.ledger, count: groups.length, groups }))
+			return 0
+		}
+		if (!invalid.ok) io.stderr('! this ledger does not validate (' + invalid.errors.length + ' error(s)); what follows is drawn from it anyway')
+		// Nothing to distil used to print the preamble and stop, which reads as "done" — and it
+		// is the shape every thorough way of gaming this file ends in. Deleting the entries
+		// leaves nothing to group; mistyping a status class makes every entry terminal and none
+		// of them dismissed. Both then say "ready to retire" and hand you a blank page to write
+		// the record from, and a blank page is not an answer to "why did you drop those".
+		if (groups.length === 0) {
+			io.stdout(
+				[
+					'Nothing to distil: no entry in this ledger carries a dismissal reason.',
+					'',
+					'That is right for a project that carried out everything it kept and turned down',
+					'nothing. If it is not — if entries were removed rather than decided, or a status',
+					'is classed `dismissed` with no reasons recorded — then the record of why is not',
+					'in this file, and `git log -- ' + path.relative(process.cwd(), options.ledger).split(path.sep).join('/') +
+						'` is the only place left to look.',
+				].join('\n')
+			)
 			return 0
 		}
 		const lines = [
@@ -626,11 +714,28 @@ export async function commandRetire(options, io) {
 		const counted = [...byType.entries()].map(([type, count]) => count + ' ' + type + (count === 1 ? '' : 's')).join(' and ')
 		const dismissed = stats.byClass.dismissed ?? 0
 		const done = stats.byClass.done ?? 0
+		const ledgerPath = path.relative(process.cwd(), options.ledger).split(path.sep).join('/')
+
+		// How many of the imported entries are still here. §6 tells you to prune each entry as
+		// it closes, so by retirement the file is a *survivor* of the triage and not a record of
+		// it — and the counts below are drawn from the file. Warning about that in prose was the
+		// old fix and it was not enough: `upstream.matched` is the number that was imported and
+		// it is sitting in the same sentence, so the tool can say how many are missing instead
+		// of asking the reader to remember. Counted over entries carrying external provenance,
+		// because `matched` counts the import and a local `todo` was never part of it.
+		const imported = index.items.filter((item) => typeof index.sourceKinds.get(item?.type)?.source_pattern === 'string').length
+		const pruned = isMapping(upstream) && Number.isInteger(upstream.matched) ? Math.max(0, upstream.matched - imported) : 0
+		const missing =
+			pruned === 0
+				? ''
+				: ' A further ' + pruned + (pruned === 1 ? ' entry has' : ' entries have') +
+				  ' already been pruned from this ledger and ' + (pruned === 1 ? 'is' : 'are') +
+				  ' in neither count — `git log -- ' + ledgerPath + '`.'
 
 		const draft = isMapping(upstream)
 			? 'Triaged ' + counted + ' inherited from `' + upstream.repo + '` as of ' + upstream.imported_at +
 			  ', filtered by `' + upstream.filter + '` (' + upstream.matched + ' of ' + upstream.total_open +
-			  ' open; ' + upstream.skipped + ' outside the filter). Kept ' + done + ', dropped ' + dismissed + '.'
+			  ' open; ' + upstream.skipped + ' outside the filter). Kept ' + done + ', dropped ' + dismissed + '.' + missing
 			: 'Triaged ' + counted + '. Kept ' + done + ', dropped ' + dismissed + '.'
 
 		if (options.json) {
@@ -641,29 +746,32 @@ export async function commandRetire(options, io) {
 					upstream: upstream ?? null,
 					kept: done,
 					dropped: dismissed,
+					imported: isMapping(upstream) ? (upstream.matched ?? null) : null,
+					stillPresent: imported,
+					pruned,
 					countedFrom: 'entries still in the ledger',
 				})
 			)
 			return 0
 		}
+		if (!invalid.ok) io.stderr('! this ledger does not validate (' + invalid.errors.length + ' error(s)); the counts below are drawn from it anyway')
 		io.stdout(
 			[
 				'Draft retirement summary — put this in your own docs, then edit it. It is the one',
 				'artifact that outlives everything, and it is what stops a future contributor',
 				're-asking every question you already answered.',
 				'',
-				// The counts are of what is still in the file, and §6 tells you to prune each
-				// implemented entry as you go — so following both rules in the obvious order
-				// makes the kept count report the opposite of what happened, with nothing in the
-				// file left to notice it. The ordering is the fix; this line is where an adopter
-				// finds it out, and it belongs in the preamble rather than in a warning, because
-				// it is true on every run.
-				'Kept and dropped are counted from the entries still in this ledger. Pruning removes',
-				'exactly the ones that count as kept, so draft this before you prune — or read the',
-				'number out of `git log -- ' + path.relative(process.cwd(), options.ledger).split(path.sep).join('/') + '`.',
+				// True on every run, which is why it is preamble rather than a warning: pruning
+				// removes exactly the entries that count as kept, so the ordering is the fix.
+				// What is new is the sentence after it, which only appears when it is true.
+				'Kept and dropped are counted from the entries still in this ledger, and pruning',
+				'removes exactly the ones that count as kept — so draft this before you prune.',
+				pruned === 0 ? null : 'It is already too late for ' + pruned + ' of them; the draft says so, and `git log` has them.',
 				'',
 				draft,
-			].join('\n')
+			]
+				.filter((line) => line !== null)
+				.join('\n')
 		)
 		return 0
 	}
