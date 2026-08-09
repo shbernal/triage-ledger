@@ -72,13 +72,20 @@ const WORDS = [
 	'xyzzy', 'thud', 'bazola', 'fnord', 'grault', 'garply', 'waldo', 'corge',
 ]
 
-/** Summaries chosen to break quoting, not to read well. */
+/**
+ * Summaries chosen to break quoting, not to read well.
+ *
+ * No line terminator appears here, and that is a rule rather than an oversight: §3 makes a
+ * line break in a summary illegal, so a generated one would only ever exercise the
+ * validator's refusal — which `surgery.test.mjs` asserts directly — while costing this
+ * fuzzer every sequence that happened to pick it.
+ */
 const SUMMARIES = [
 	HOSTILE_SUMMARY,
 	'plain',
 	'a & b',
 	'  leading and trailing  ',
-	'ends in a carriage return\r',
+	'ends in a tab\t',
 	'a "quoted" word',
 	'key: value',
 	'#starts with a hash',

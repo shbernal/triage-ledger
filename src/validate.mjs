@@ -18,6 +18,7 @@ import {
 	CLASS_REQUIREMENTS,
 	EVIDENCE_LIST_FIELDS,
 	EVIDENCE_RESULTS,
+	EVIDENCE_TEXT_LIST_FIELDS,
 	NO_NEXT_ACTION,
 	SCHEMA_VERSION,
 	SPEC_FIELDS,
@@ -355,6 +356,21 @@ function validateEvidence(report, index, item, label, cls) {
 	for (const field of EVIDENCE_LIST_FIELDS) {
 		if (hasOwn(evidence, field) && !Array.isArray(evidence[field])) report.error(label + ': `evidence.' + field + '` must be a list')
 	}
+	// A plain scalar has a type and YAML picks it, so a path or a spec reference written
+	// unquoted can arrive as something other than text — `3.10` is the number 3.1, and the
+	// file still reads as `3.10`, so no diff shows the loss. These two lists are the only
+	// free-text ones the spec owns; everywhere else an undeclared name is already an error,
+	// which is what makes the coercion visible there and invisible here (§3).
+	for (const field of EVIDENCE_TEXT_LIST_FIELDS) {
+		if (!Array.isArray(evidence[field])) continue
+		for (const value of evidence[field]) {
+			if (typeof value === 'string' && value.trim() !== '') continue
+			report.error(
+				label + ': `evidence.' + field + '` must contain non-empty strings; ' + JSON.stringify(value) +
+					(typeof value === 'string' ? ' is blank' : ' came back a ' + typeof value + ' — quote a value meant as text')
+			)
+		}
+	}
 	if (hasOwn(evidence, 'result') && !EVIDENCE_RESULTS.includes(evidence.result)) {
 		report.error(label + ': `evidence.result` must be one of ' + EVIDENCE_RESULTS.join(', '))
 	}
@@ -381,10 +397,22 @@ function validateDismissal(report, index, item, label) {
 			report.error(label + ': undeclared dismissal reason: ' + name)
 			continue
 		}
-		for (const required of Array.isArray(reason.requires_evidence) ? reason.requires_evidence : []) {
+		const demanded = Array.isArray(reason.requires_evidence) ? reason.requires_evidence : []
+		for (const required of demanded) {
 			if (!kinds.has(required)) {
 				report.error(label + ': dismissal reason `' + name + '` requires evidence kind `' + required + '`, which this entry does not carry')
 			}
+		}
+		// Naming a kind is an assertion, and no format can do better than that. `result` is
+		// the cheapest thing that makes the assertion a sentence — "I ran it and it did not
+		// reproduce" rather than `repro` — and the value is in the writer noticing while
+		// they write it, which is why it is a warning at the moment of dismissal and not an
+		// error anywhere. A SHOULD in §3, reported as one.
+		if (demanded.length > 0 && !hasOwn(isMapping(item.evidence) ? item.evidence : {}, 'result')) {
+			report.warn(
+				label + ': dismissal reason `' + name + '` demanded evidence, and no `evidence.result` records how it came out. ' +
+					'Naming a kind asserts nothing on its own'
+			)
 		}
 	}
 }
@@ -458,6 +486,14 @@ function validateItem(report, index, item, position) {
 	// have to do — and a blank one is what a dropped argument looks like.
 	if (typeof item.summary !== 'string') report.error(label + ': `summary` must be a string')
 	else if (item.summary.trim() === '') report.error(label + ': `summary` must not be empty — it is the only self-contained field an entry has')
+	// A newline is the one character in a summary whose survival depends on the platform
+	// that typed it: the Windows `npx` shim drops it and every argument after it, so what
+	// arrives is a truncated summary and silently unset fields. An error rather than a
+	// warning because the alternative is a ledger whose contents depend on whose machine
+	// seeded it, and because the entry it produces is otherwise perfectly valid.
+	else if (/[\r\n]/.test(item.summary)) {
+		report.error(label + ': `summary` must not contain a line break — it is one line, on every platform')
+	}
 	if (!isIsoDate(item.first_seen)) report.error(label + ': `first_seen` must be YYYY-MM-DD')
 	// An empty value is the omission rule's business, below. There is nothing inside one for
 	// a format check to inspect, and reporting it twice tells the reader they made two

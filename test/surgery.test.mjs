@@ -109,16 +109,30 @@ test('CRLF files stay CRLF', () => {
 })
 
 test('a summary carrying a stray CR does not reach the file', () => {
-	// The B0 recon failure mode: `gh` output ends in \r, the \r reaches a summary value,
-	// and quoting faithfully preserves something invisible in a diff. Quoting is right —
-	// so the check is that it stays visible rather than silently embedded.
+	// The B0 recon failure mode: `gh` output ends in \r and the \r reaches a summary value.
+	// Escaping it faithfully was the first answer, and it was the weaker one — a summary
+	// that reads `"title\r"` is visible only to whoever looks. §3 now makes a line break in
+	// a summary illegal outright, so the importer has to strip it at the parse boundary,
+	// which is the one place the strip can be named.
+	assert.throws(
+		() =>
+			addLedgerItemText(
+				LEDGER,
+				{ id: 'todo-3', source: 'local', type: 'todo', status: 'needs-triage', summary: 'title\r' },
+				'2026-03-03'
+			),
+		/must not contain a line break/
+	)
+
+	// The escaping itself still has to work, because a summary can carry invisible
+	// whitespace that is *not* a line terminator and that a plain scalar would eat.
 	const added = addLedgerItemText(
 		LEDGER,
-		{ id: 'todo-3', source: 'local', type: 'todo', status: 'needs-triage', summary: 'title\r' },
+		{ id: 'todo-3', source: 'local', type: 'todo', status: 'needs-triage', summary: 'title\t' },
 		'2026-03-03'
 	)
-	assert.ok(added.includes('summary: "title\\r"'), 'a raw CR was written into the file instead of being escaped')
-	assert.equal(itemById(added, 'todo-3').summary, 'title\r')
+	assert.ok(added.includes('summary: "title\\t"'), 'a raw tab was written into the file instead of being escaped')
+	assert.equal(itemById(added, 'todo-3').summary, 'title\t')
 })
 
 test('mutations refuse to leave an invalid ledger', () => {

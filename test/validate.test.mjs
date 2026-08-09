@@ -90,6 +90,85 @@ test('requires_evidence is enforced on the entries dismissed for that reason', (
 	assert.ok(errorsFor(text).some((e) => e.includes('requires evidence kind `repro`')))
 })
 
+test('a reason that demanded evidence and got no result is warned about, not refused', () => {
+	// The ratchet cannot verify that work happened, and requiring `result` would only move
+	// the assertion one field along — so this is a SHOULD in §3 and a warning here. What it
+	// buys is that the writer has to turn `repro` into a sentence while they are writing it.
+	const text = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: dropped
+    first_seen: 2026-01-01
+    last_reviewed: 2026-01-01
+    non_target_reasons: [no-repro]
+    evidence:
+      kinds: [repro]
+`
+	)
+	const report = validateLedgerText(text).report
+	assert.deepEqual(report.errors, [])
+	assert.ok(report.warnings.some((w) => w.includes('no `evidence.result` records how it came out')), report.warnings.join('\n'))
+
+	const withResult = text.replace('      kinds: [repro]\n', '      kinds: [repro]\n      result: fail\n')
+	assert.deepEqual(validateLedgerText(withResult).report.warnings, [])
+})
+
+test('a summary must not contain a line break, whatever typed it', () => {
+	// Not a length rule. A newline is the one character in a summary whose survival depends
+	// on the platform: the Windows npx shim drops it and every argument after it, so the
+	// entry that arrives is truncated, its other fields are silently unset, and it validates.
+	for (const escape of ['\\n', '\\r']) {
+		const text = LEDGER.replace('summary: "A thing nobody has decided about"', 'summary: "one' + escape + 'two"')
+		assert.ok(errorsFor(text).some((e) => e.includes('must not contain a line break')), escape)
+	}
+	// The rule is about the value, not about how many lines the file spends on it. A
+	// double-quoted scalar wrapped across two lines folds to a single space, so it carries
+	// no line break and is legal — which is the distinction that keeps this from being a
+	// rule about formatting.
+	const wrapped = LEDGER.replace('summary: "A thing nobody has decided about"', 'summary: "one\n      two"')
+	assert.deepEqual(errorsFor(wrapped), [])
+})
+
+test('free-text evidence lists must hold strings, because YAML types a plain scalar', () => {
+	// `spec_refs: [3.10]` is a legal document in which the value is the number 3.1, and the
+	// file still reads `3.10` afterwards — the loss happens on the way in and no diff shows
+	// it. These two lists are the only free-text ones the spec owns; everywhere else an
+	// undeclared name is already an error, which is what makes the coercion visible there.
+	const withEvidence = (block) =>
+		replaceItems(
+			LEDGER,
+			`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: taken
+    first_seen: 2026-01-01
+    next_action: do it
+    evidence:
+      kinds: [source-read]
+${block}`
+		)
+
+	const coerced = withEvidence('      spec_refs: [3.10]\n')
+	assert.ok(errorsFor(coerced).some((e) => e.includes('quote a value meant as text')), errorsFor(coerced).join('\n'))
+
+	const quoted = withEvidence("      spec_refs: ['3.10']\n")
+	assert.deepEqual(errorsFor(quoted), [])
+
+	const blank = withEvidence("      local_files: ['']\n")
+	assert.ok(errorsFor(blank).some((e) => e.includes('is blank')), errorsFor(blank).join('\n'))
+
+	// `kinds` is deliberately not checked this way: its elements are matched against the
+	// declared vocabulary, so a coerced one is already reported as an undeclared kind, and
+	// reporting it twice would tell the reader they made two mistakes when they made one.
+	const badKind = withEvidence('').replace('      kinds: [source-read]', '      kinds: [3.10]')
+	const kindErrors = errorsFor(badKind).filter((e) => e.includes('evidence'))
+	assert.deepEqual(kindErrors, ['todo-1: undeclared evidence kind: 3.1'])
+})
+
 test('a policy reason may not retire to null; an item-state reason may', () => {
 	const nulled = LEDGER.replace('retire_to: docs/target.md', 'retire_to: null')
 	assert.ok(errorsFor(nulled).some((e) => e.includes('must not be null when `about: project-policy`')))

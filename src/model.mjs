@@ -58,6 +58,17 @@ export const EVIDENCE_RESULTS = ['pass', 'fail', 'inconclusive']
 /** `evidence` sub-fields the spec names. `kinds` is the only one the ratchet requires. */
 export const EVIDENCE_LIST_FIELDS = ['kinds', 'local_files', 'spec_refs']
 
+/**
+ * The evidence lists whose elements are free text rather than declared vocabulary.
+ *
+ * `kinds` is deliberately not here: its elements are checked against `evidence_kinds`, so
+ * a value YAML turned into a number is already reported as an undeclared kind. These two
+ * have nothing to check against, which is exactly why their element type has to be — a
+ * `spec_ref` written plain as `3.10` is the number 3.1, and nothing downstream will
+ * notice (§3).
+ */
+export const EVIDENCE_TEXT_LIST_FIELDS = ['local_files', 'spec_refs']
+
 /** The value `next_action` must carry at class `done`: there is nothing left to do. */
 export const NO_NEXT_ACTION = 'none'
 

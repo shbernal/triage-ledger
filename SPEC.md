@@ -289,6 +289,26 @@ upstream title (`"12"`, `"css3 issues"`) is *meant* to be replaced with a real s
 during triage. That is not tampering and it loses nothing, because `source` is the
 provenance field.
 
+`summary` **MUST NOT** contain a line break. That is a rule about portability rather than
+about length, and it is why it is a MUST where the length is only a SHOULD: a newline is
+the one character in a summary whose survival depends on the platform that typed it. On
+Windows the `npx` shim re-parses the command line and drops a newline inside an argument
+along with every argument after it, so a summary typed with one arrives truncated, the
+dropped fields are never set, and the entry validates. Making the character illegal is
+what stops a ledger's contents depending on the operating system of whoever seeded it.
+
+**A plain scalar has a type, and YAML picks it.** A value meant as text that reads as a
+number comes back a number — `3.10` becomes `3.1`, `1.0` becomes `1` — and no diff will
+show you, because the file still says what you typed; the loss happens on the way in.
+Where the value is drawn from the vocabulary this is harmless: an undeclared name is an
+error, so the coercion surfaces as one. Where it is free text nothing catches it, and the
+free-text values in this format are `evidence.local_files`, `evidence.spec_refs`, and any
+field your project carries without declaring its values (§7). **Quote those.**
+
+`evidence.local_files` and `evidence.spec_refs` **MUST** be lists of non-empty strings.
+That is the enforceable half of the rule, and it is the whole of it that a validator can
+own: a format cannot know what an undeclared field was meant to hold.
+
 ### When each field becomes required — the ratchet
 
 Required fields depend on the entry's **class** (§2). Every class adds to the first row,
@@ -343,6 +363,21 @@ evidence:
 or `inconclusive`. Three and not two, because a check that neither confirmed the
 behaviour nor refuted it has an honest outcome, and recording it as `fail` is how a
 reproduction nobody managed to run becomes a bug nobody has.
+
+**What the ratchet buys here is narrower than it looks, and the difference is worth
+stating.** A reason declaring `requires_evidence: [repro]` is satisfied by *naming* the
+kind. Nothing in the file distinguishes an entry whose reproduction was genuinely
+attempted from one where the flag was typed, and no format can — this is a record, not a
+witness. What it does buy is that somebody had to name a kind of proof **the project
+declared in advance**, which is a real constraint on the vocabulary and none at all on the
+individual. Read an evidence block as a claim made under a rule, and do not trust a
+dismissal further than that.
+
+Where a reason declares `requires_evidence`, the entry **SHOULD** also record
+`evidence.result`, and a validator **SHOULD** say so when it does not. It verifies nothing
+either — but "I ran it and it did not reproduce" is a different sentence from `repro`, and
+the difference is one the writer notices while writing it. That is the only place the
+mechanism can apply pressure.
 
 ### Omission, not empty placeholders
 
@@ -409,6 +444,12 @@ Do not copy issue bodies into the ledger. It duplicates a public record, and it 
 readable file into an unusable one. Metadata-first survives contact with real data:
 titles are short — a median around 45 characters in one measured corpus — and they
 usually name a symptom, which is enough to triage against.
+
+An importer **MUST** strip line terminators from a title before it becomes a `summary`,
+once, at the parse boundary — not repeatedly downstream, and not by hoping the emitter
+will escape them. `gh` on Windows hands back titles ending in `\r`, and §3 makes such a
+summary illegal exactly so that the strip has to happen somewhere nameable, instead of
+being found as an invisible character in a diff six weeks later.
 
 ### Seeding MUST be resumable, and MUST NOT overwrite a triaged entry
 
@@ -613,16 +654,33 @@ That constraint is what makes the next list short enough to be real.
    dropped Y."* This is the one artifact that outlives everything, and it is what stops
    a future contributor re-asking every dismissed question. It is derivable from the
    root `upstream:` block (§3) plus counts — which is why that block is mandatory.
-4. **Delete the ledger file.**
-5. **Remove the tooling**: CI wiring, scripts entries, any installed agent skill, the
-   pointer in your agent instructions, and any link to the ledger from your own docs.
-6. **Grep** for the ledger path and for entry ids across the whole repo.
+4. **Reach `items: []`**, then **delete the ledger file**.
+5. **Remove the tooling**: CI wiring, scripts entries, any installed agent skill *and
+   everything installing it wrote*, the pointer in your agent instructions, and any link
+   to the ledger from your own docs.
+6. **Grep** for the ledger path and for entry ids across the working tree, excluding
+   `.git`.
+
+**The kept count comes from entries that are still in the file, so draft the summary
+before you prune** — or read it out of `git log`. Pruning as you go (below) removes
+exactly the entries the summary would count as kept, and a tool computing that number
+after the fact reports the opposite of what happened without any way to know it has. This
+is the one place where two rules in this section pull against each other, and the ordering
+is how they are reconciled.
+
+**Step 4 is two things, and the first is the one people skip.** A file deleted with nine
+entries still in it is textually indistinguishable from a file *abandoned* with nine
+entries in it, and telling those apart is the entire product. Empty the list in the last
+commit before the deletion, so the final committed state of the ledger is self-evidently a
+completed drain rather than a claim about one.
 
 Step 6 matters more than it looks. Source comments referencing entry ids are a real
 pattern — a workaround in code, tagged with the entry that explains it — and every one
 of them becomes a dangling reference the moment the ledger goes. If you reference entry
 ids from source at all, use a single declared prefix for it, so that teardown is one
-grep for one literal string rather than archaeology.
+grep for one literal string rather than archaeology. Exclude `.git` when you run it: the
+history holds every one of these strings permanently and is *meant* to, so a grep stated
+without the exclusion can never come back clean and trains its reader to ignore it.
 
 ### Prune in a later commit than the one that closes the entry
 
@@ -630,6 +688,14 @@ The commit that does the work carries the entry at its `done` status with its fu
 closing notes; a **separate, later** commit removes it. Then `git log -- <ledger>` still
 leads a future reader to the reasoning. Delete it in the same commit and those notes
 never exist anywhere.
+
+**Close the entry in the commit that does the work, not the one after it.** The rule
+above is careful about the prune and silent about the close, and the natural working
+order — do the work, commit it, then move the entry — puts the status change in the
+*next* commit. That is one misleading hop: `git log -- <ledger>` sends a reader to
+whatever change happened to land next, which is not the change that closed anything.
+Record the close before you commit, so the diff that did the work and the diff that
+closed the entry are the same diff.
 
 A prune commit **SHOULD** name each removed id and the commit that closed it; the
 message is the index back into history. The final deletion commit **SHOULD** name the
