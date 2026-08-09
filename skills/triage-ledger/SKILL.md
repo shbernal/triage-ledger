@@ -1,6 +1,6 @@
 ---
 name: triage-ledger
-description: Use when working with a triage ledger (docs/backlog.yml with `schema: 1`) — triaging a backlog, dismissing or accepting entries, choosing a dismissal reason, defining vocabulary, or retiring the ledger. Also use when asked to work through an inherited backlog of issues or a TODO pile.
+description: 'Use when working with a triage ledger (docs/backlog.yml with `schema: 1`) — triaging a backlog, dismissing or accepting entries, choosing a dismissal reason, defining vocabulary, or retiring the ledger. Also use when asked to work through an inherited backlog of issues or a TODO pile.'
 schema: 1
 ---
 

@@ -5,6 +5,8 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
+import { parseDocument } from 'yaml'
+
 import { parseArgs, run } from '../src/cli.mjs'
 import { validateLedgerText } from '../src/validate.mjs'
 import { HOSTILE_SUMMARY } from './fixtures.mjs'
@@ -256,6 +258,29 @@ test('the shipped skill declares the schema this implementation speaks', async (
 	const here = path.dirname(fileURLToPath(import.meta.url))
 	const skill = await fs.readFile(path.join(here, '..', 'skills', 'triage-ledger', 'SKILL.md'), 'utf8')
 	assert.match(skill, /^schema: 1$/m)
+})
+
+test('the shipped skill frontmatter parses as YAML, or nothing can install it', async () => {
+	// `npx skills add` parses this block and skips any skill whose block does not parse —
+	// and it exits 0 while doing it, so a broken skill is a silent no-install rather than a
+	// failure. The description names `schema: 1`, and an unquoted colon inside a plain
+	// scalar is a YAML error rather than text, which is precisely what happened.
+	//
+	// This is the ledger's own `summary` rule turned on the tool's own artifact: quote
+	// unconditionally, because a rule with branches gets got wrong. The only check that
+	// would have caught it is one that reads the shipped file with a real YAML parser,
+	// because every other thing we run reads this frontmatter with a regex.
+	const here = path.dirname(fileURLToPath(import.meta.url))
+	const text = await fs.readFile(path.join(here, '..', 'skills', 'triage-ledger', 'SKILL.md'), 'utf8')
+	const frontmatter = text.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/)
+	assert.ok(frontmatter, 'no frontmatter block')
+
+	const doc = parseDocument(frontmatter[1], { prettyErrors: false })
+	assert.deepEqual(doc.errors.map((error) => error.message), [])
+	const data = doc.toJS()
+	assert.equal(data.name, 'triage-ledger', 'the name must match the directory the installer copies')
+	assert.equal(typeof data.description, 'string')
+	assert.ok(data.description.length > 0 && data.description.length <= 1024)
 })
 
 test('validate exits non-zero on errors and zero with only warnings', async () => {
