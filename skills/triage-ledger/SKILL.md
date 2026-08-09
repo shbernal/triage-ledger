@@ -93,6 +93,9 @@ Hand-edit, carefully, the way a human would:
 - Quote anything free-text. A plain scalar has a type and YAML picks it, so `3.10` written
   bare is the number 3.1 and the file still reads `3.10` afterwards.
 - Write only the fields the entry's class requires. Do not add empty placeholders.
+- When you change a decision, remove the one you are replacing. A dismissal reason on an
+  entry you have just accepted, or a `next_action` on one you have just dismissed, makes
+  the entry assert both.
 - Re-read the file after editing and check it against `SPEC.md` yourself.
 
 ## Referring to an entry from source code

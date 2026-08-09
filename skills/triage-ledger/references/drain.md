@@ -87,6 +87,35 @@ silence is the failure this whole phase is designed against. If it is climbing a
 outstanding count is not falling, say so out loud rather than quietly continuing — the
 honest options are to pick it back up or to retire what can be retired and delete the rest.
 
+## Changing a decision is normal; say what you are replacing
+
+An entry you dismissed last week can be accepted this week. `set-status` withdraws the
+decision you are replacing — the dismissal reason comes off when you accept, `next_action`
+comes off when you dismiss — and keeps the evidence, which is a record of what was found
+rather than a claim about the outcome. Both directions are one command; you never edit the
+file to undo a decision.
+
+What the tool cannot do is explain the reversal. Put that in the commit message, because
+the entry itself will only ever show the decision currently in force, and after retirement
+the commit is all there is.
+
+## If the ledger has been touched on another branch
+
+`validate` refusing with **unresolved merge conflict** means exactly that, and it is the
+first thing to fix — nothing can read the file until you do.
+
+Do not resolve it by keeping both sides. The conflict boundary falls where the text
+differs, not where an entry ends, so both sides together can put a trailing field on the
+entry *after* the one it belongs to and bring back every entry the other branch pruned. The
+result usually validates: an entry restored to `needs-triage` is a legal entry, and nothing
+in the format knows it was ever decided. Run `git config merge.conflictStyle zdiff3` so the
+merge base is visible, then resolve entry by entry — the union of both sides' decisions and
+the union of both sides' deletions. Report the reversal count to the human if there was one;
+it is not something they can see in a passing build.
+
+If you are the one on a branch: decide freely, and leave pruning to the shared branch.
+Deciding entries merges cleanly. Removing them is what conflicts.
+
 ## When it is done
 
 `status` reports `retire`. Go to [retire.md](retire.md).

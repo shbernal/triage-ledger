@@ -14,7 +14,33 @@ function yamlErrorMessage(error) {
 	const line = error.linePos?.[0]?.line
 	const column = error.linePos?.[0]?.col
 	const location = line ? ':' + line + (column ? ':' + column : '') : ''
-	return 'YAML' + location + ': ' + error.message
+	// `prettyErrors` is what makes the parser compute `linePos`. It also appends the position
+	// in prose *and* a caret diagram of the offending lines. Keep the machine-readable
+	// prefix and drop the rest: the position is then given once, and — the reason this is
+	// not merely tidiness — every error stays a single line, which is what the report prints
+	// one of per row.
+	return 'YAML' + location + ': ' + error.message.replace(/ at line \d+, column \d+:[\s\S]*$/, '')
+}
+
+/** Git's four conflict markers, each of which is seven identical characters at column 0. */
+const CONFLICT_MARKER = /^(?:<{7}|>{7}|\|{7}|={7})(?:\s|$)/
+
+/**
+ * The lines carrying merge conflict markers, if this file still has any.
+ *
+ * Triggered by `<<<<<<<` or `>>>>>>>` rather than by any of the four, because those two
+ * cannot be anything else — seven identical angle brackets at column 0 is not YAML under
+ * any reading, whereas a bare `=======` is a setext underline in some other file's dialect.
+ * Once one of the unambiguous pair is present, every marker line is worth naming.
+ */
+export function conflictMarkerLines(text) {
+	const lines = String(text).split(/\r?\n/)
+	if (!lines.some((line) => /^(?:<{7}|>{7})(?:\s|$)/.test(line))) return []
+	const found = []
+	lines.forEach((line, position) => {
+		if (CONFLICT_MARKER.test(line)) found.push(position + 1)
+	})
+	return found
 }
 
 /**
@@ -24,9 +50,30 @@ function yamlErrorMessage(error) {
  * against the document: that `summary` was written as a double-quoted scalar (§3), and
  * that a key is absent rather than present-and-empty (§3). Both are invisible once the
  * file has become JavaScript objects.
+ *
+ * Conflict markers are answered before the parser sees the text, and answered *instead* of
+ * everything else. A conflicted ledger produces one YAML error per hunk and not one of them
+ * mentions a merge — the reader is handed "Implicit keys need to be on a single line" seven
+ * times over and has to work out for themselves what happened. It is also the one
+ * malformation an adopter reliably produces, because the ledger is a single file that two
+ * branches both write to.
  */
 export function parseLedgerText(text) {
-	const doc = parseDocument(text, { prettyErrors: false })
+	const conflicts = conflictMarkerLines(text)
+	if (conflicts.length > 0) {
+		return {
+			doc: null,
+			data: null,
+			errors: [
+				'unresolved merge conflict: markers at line ' +
+					conflicts.join(', ') +
+					'. Resolve them before anything else — and do not simply keep both sides: ' +
+					'a conflict boundary falls where the text differs, not where an entry ends, ' +
+					'so both can put a field on the wrong entry and bring back entries the other branch pruned',
+			],
+		}
+	}
+	const doc = parseDocument(text, { prettyErrors: true })
 	const errors = doc.errors.map(yamlErrorMessage)
 	if (errors.length > 0) return { doc: null, data: null, errors }
 	try {

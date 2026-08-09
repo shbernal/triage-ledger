@@ -97,6 +97,48 @@ a line break in a `summary` illegal for exactly this reason, so the one case tha
 reach the file fails validation instead of looking plausible. If you are seeding from `gh`,
 strip `\r` at the parse boundary: `gh` on Windows hands back titles that end in one.
 
+## Two people draining it at once
+
+The ledger is one file, so this comes up as soon as a second person has a branch. Two
+things to set up, and one rule.
+
+**Prune on the shared branch.** Deciding entries merges cleanly — a decision appends fields
+*inside* an entry, and two branches deciding different entries never touch the same lines.
+Removing an entry deletes a block, the two sides realign, and from there the conflicts
+start. Two maintainers who agree about everything will still conflict several times if both
+of them prune, and the natural resolution of those conflicts is the damaging one.
+
+Note this is **not** the "prune in a later commit" advice from `SPEC.md` §6. That is about
+what `git log -- <ledger>` shows a future reader. Splitting the prune into its own commit
+does nothing for a merge, which compares trees and never sees your commits at all.
+
+**Set the conflict style before you need it:**
+
+```sh
+git config merge.conflictStyle zdiff3
+```
+
+The default two-sided marker shows you your side and their side. In a file that is one long
+list of same-shaped entries, that makes an entry *they pruned* look exactly like an entry
+*you added*, and the natural resolution reinstates it. `zdiff3` also shows the merge base,
+which answers the question: present in the base and gone from one side means somebody
+deleted it.
+
+**Never resolve a ledger conflict by keeping both sides**, and never reach for
+`docs/backlog.yml merge=union` in `.gitattributes` to stop the file conflicting. Union
+merging is that resolution applied automatically, forever, with no conflict raised. Both
+produce the same two failures: a trailing field lands on the entry after the one it belongs
+to, and every entry the other branch pruned comes back as untriaged. Most of that
+**validates** — an entry restored to untriaged is a perfectly legal entry, and the ratchet
+has no way to know it was ever decided. What you see is a burn-down that went backwards and
+a green build.
+
+Resolve by entry instead: for each conflicting region, work out from the base which entries
+each side decided and which each side pruned, then write the union of the decisions and the
+union of the deletions. `validate` will catch a decision you assemble out of two halves,
+because it will be missing whatever its new class requires. It will not catch a decision you
+drop.
+
 ## The integration surface, which is also the removal checklist
 
 Six rows. If you cannot list everything the system touches, you cannot remove it, and

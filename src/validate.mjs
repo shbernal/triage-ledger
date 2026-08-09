@@ -16,6 +16,7 @@ import {
 	BASE_FIELDS,
 	CLASSES,
 	CLASS_REQUIREMENTS,
+	DECISION_FIELD_CLASSES,
 	EVIDENCE_LIST_FIELDS,
 	EVIDENCE_RESULTS,
 	EVIDENCE_TEXT_LIST_FIELDS,
@@ -456,6 +457,29 @@ function validateDeclaredFields(report, index, item, label, cls) {
  * paid by typing a key and stopping. Absent and empty stay distinguishable; neither is a
  * value.
  */
+/**
+ * A field that asserts a decision the entry's status denies.
+ *
+ * Reachable two ways, and neither is exotic. Change your mind — dismiss an entry, then
+ * accept it — and `set-status` used to leave the dismissal reason behind, so the entry
+ * claimed both. Or merge two branches that decided one entry differently: the conflict
+ * splits at the lines that differ, so a resolver can take the status from one side and the
+ * trailing fields from the other and assemble an entry neither of them wrote.
+ *
+ * Empty values are the omission rule's, below, for the reason given there: one mistake
+ * should report once, and an empty `non_target_reasons: []` is a different complaint.
+ */
+function validateDecisionFields(report, item, label, cls) {
+	for (const [field, classes] of Object.entries(DECISION_FIELD_CLASSES)) {
+		if (!hasOwn(item, field) || isEmptyValue(item[field]) || classes.includes(cls)) continue
+		report.error(
+			field === 'next_action'
+				? label + ': ' + atStatus(item) + ' is terminal and `next_action` names work outstanding — an entry decided against has none'
+				: label + ': `' + field + '` says this was decided against, and ' + atStatus(item) + ' says it was not'
+		)
+	}
+}
+
 function validateOmission(report, index, item, label, cls) {
 	for (const field of Object.keys(item)) {
 		if (BASE_FIELDS.includes(field)) continue
@@ -531,6 +555,7 @@ function validateItem(report, index, item, position) {
 	// volunteers evidence early is welcome to, and a half-written block is still wrong.
 	if (hasOwn(item, 'evidence') && !isEmptyValue(item.evidence)) validateEvidence(report, index, item, label, cls)
 
+	validateDecisionFields(report, item, label, cls)
 	validateDeclaredFields(report, index, item, label, cls)
 	validateOmission(report, index, item, label, cls)
 }

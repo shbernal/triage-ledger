@@ -183,3 +183,62 @@ test('evidence is written as a readable block and merges rather than replacing',
 	// The block was replaced whole, not appended to twice.
 	assert.equal((enriched.match(/^      kinds:/gm) || []).length, 1)
 })
+
+test('changing your mind withdraws the decision you are replacing, and keeps the evidence', () => {
+	const dismissed = setLedgerItemStatusText(LEDGER, 'todo-1', 'dropped', {
+		reviewDate: '2026-02-02',
+		fields: { non_target_reasons: ['no-repro'], evidence: { kinds: ['repro'], result: 'inconclusive' } },
+	})
+	assert.ok(dismissed.includes('non_target_reasons: [no-repro]'))
+
+	// A week later it turns out to be real. Before this, the reason stayed and the entry
+	// claimed both decisions at once — and validated.
+	const accepted = setLedgerItemStatusText(dismissed, 'todo-1', 'taken', {
+		reviewDate: '2026-02-09',
+		fields: { next_action: 'fix it' },
+	})
+	const item = itemById(accepted, 'todo-1')
+	assert.equal(item.non_target_reasons, undefined)
+	assert.equal(item.next_action, 'fix it')
+	// Evidence is a record of what was found, not a claim about the decision, so it stays.
+	assert.deepEqual(item.evidence.kinds, ['repro'])
+	assert.deepEqual(validateLedgerText(accepted).report.errors, [])
+
+	// And back the other way: a terminal entry must not name work still outstanding.
+	const redismissed = setLedgerItemStatusText(accepted, 'todo-1', 'dropped', {
+		reviewDate: '2026-02-16',
+		fields: { non_target_reasons: ['out-of-scope'] },
+	})
+	const back = itemById(redismissed, 'todo-1')
+	assert.equal(back.next_action, undefined)
+	assert.deepEqual(back.non_target_reasons, ['out-of-scope'])
+	assert.deepEqual(validateLedgerText(redismissed).report.errors, [])
+})
+
+test('withdrawing a field takes the whole field, and nothing either side of it', () => {
+	// The reason this is its own test: line surgery. A multi-line block removed by range is
+	// exactly where an off-by-one eats the comment above it or the field below.
+	const dismissed = setLedgerItemStatusText(LEDGER, 'todo-1', 'dropped', {
+		reviewDate: '2026-02-02',
+		fields: { non_target_reasons: ['no-repro'], evidence: { kinds: ['repro'], local_files: ['src/a.mjs'] } },
+	})
+	const accepted = setLedgerItemStatusText(dismissed, 'todo-1', 'taken', {
+		reviewDate: '2026-02-09',
+		fields: { next_action: 'fix it' },
+	})
+	assert.ok(accepted.includes('# This comment sits inside the vocabulary block'))
+	assert.ok(accepted.includes('load-bearing and must survive every mutation'))
+	// The entry's field, not the vocabulary list of the same name that declares it.
+	assert.ok(!/^ {4}non_target_reasons:/m.test(accepted))
+	assert.ok(/^  non_target_reasons:$/m.test(accepted))
+	assert.deepEqual(itemById(accepted, 'todo-2').summary, 'Another thing')
+	assert.deepEqual(itemById(accepted, 'todo-1').evidence.local_files, ['src/a.mjs'])
+})
+
+test('a mutation refuses to run against a conflicted ledger', () => {
+	const conflicted = LEDGER.replace(
+		'    status: needs-triage\n    first_seen: 2026-01-01',
+		'<<<<<<< HEAD\n    status: taken\n=======\n    status: dropped\n>>>>>>> other\n    first_seen: 2026-01-01'
+	)
+	assert.throws(() => setLedgerItemStatusText(conflicted, 'todo-2', 'dropped'), /unresolved merge conflict/)
+})

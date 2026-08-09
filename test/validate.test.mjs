@@ -412,3 +412,100 @@ test('a project may not redeclare a field the spec governs', () => {
 	)
 	assert.ok(errorsFor(text).some((e) => e.includes('governed by the spec')))
 })
+
+test('an entry may not assert two decisions at once', () => {
+	// Reachable without a merge: dismiss an entry, then accept it, and before the writer
+	// withdrew it the reason stayed. The entry then said the project decided against
+	// something it had decided for, and this validated.
+	const contradictory = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: taken
+    first_seen: 2026-01-01
+    last_reviewed: 2026-02-02
+    non_target_reasons: [out-of-scope]
+    next_action: "do the thing"
+    evidence:
+      kinds: [source-read]
+`
+	)
+	assert.ok(
+		errorsFor(contradictory).some((e) => e.includes('says this was decided against, and `taken` says it was not')),
+		errorsFor(contradictory).join('\n')
+	)
+
+	// The mirror, and the worse half: a terminal entry naming work still outstanding.
+	const terminalWithWork = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: dropped
+    first_seen: 2026-01-01
+    last_reviewed: 2026-02-02
+    non_target_reasons: [out-of-scope]
+    next_action: "profile the render loop"
+`
+	)
+	assert.ok(
+		errorsFor(terminalWithWork).some((e) => e.includes('is terminal and `next_action` names work outstanding')),
+		errorsFor(terminalWithWork).join('\n')
+	)
+})
+
+test('evidence is a record and survives a change of mind, so it is not on that list', () => {
+	// The distinction the rule above turns on. `evidence` says what was found; the other two
+	// say what was decided. A dismissal that gathered evidence keeps it, and a reason may
+	// even demand it.
+	const dismissedWithEvidence = replaceItems(
+		LEDGER,
+		`  - id: todo-1
+    source: local
+    type: todo
+    summary: "A thing"
+    status: dropped
+    first_seen: 2026-01-01
+    last_reviewed: 2026-02-02
+    non_target_reasons: [no-repro]
+    evidence:
+      kinds: [repro]
+      result: inconclusive
+`
+	)
+	assert.deepEqual(errorsFor(dismissedWithEvidence), [])
+})
+
+test('a conflicted ledger is told it is conflicted, once, with the lines', () => {
+	// The one malformation an adopter reliably produces, because the ledger is one file and
+	// two branches write to it. Before this it produced seven parser errors about implicit
+	// keys, none of which mentioned a merge.
+	const conflicted = LEDGER.replace(
+		'    status: needs-triage\n    first_seen: 2026-01-01',
+		'<<<<<<< HEAD\n    status: taken\n=======\n    status: dropped\n>>>>>>> other\n    first_seen: 2026-01-01'
+	)
+	const errors = errorsFor(conflicted)
+	assert.equal(errors.length, 1, errors.join('\n'))
+	assert.match(errors[0], /^unresolved merge conflict: markers at line 45, 47, 49\./)
+	// And it says what not to do, because the natural resolution is the damaging one.
+	assert.match(errors[0], /do not simply keep both sides/)
+
+	// A half-resolved file still counts: one marker left behind is one too many.
+	const halfResolved = LEDGER.replace('items:\n', 'items:\n>>>>>>> other\n')
+	assert.equal(errorsFor(halfResolved).length, 1)
+})
+
+test('a YAML error says where, because the parser knows and we were throwing it away', () => {
+	const broken = LEDGER.replace('  - id: todo-2', '  - id: todo-2\n   bad-indent: 1')
+	const errors = errorsFor(broken)
+	assert.ok(errors.length > 0)
+	assert.ok(
+		errors.every((e) => /^YAML:\d+:\d+: /.test(e)),
+		errors.join('\n')
+	)
+	// The position is given once, not twice — `prettyErrors` also writes it into the prose.
+	assert.ok(!errors.some((e) => / at line \d+, column \d+/.test(e)), errors.join('\n'))
+})

@@ -15,7 +15,8 @@
  * invalid ledger fails instead of writing.
  */
 
-import { indexLedger, isIsoDate, parseLedgerText, readsBackAsItself, todayIsoDate } from './ledger.mjs'
+import { hasOwn, indexLedger, isIsoDate, parseLedgerText, readsBackAsItself, todayIsoDate } from './ledger.mjs'
+import { DECISION_FIELD_CLASSES } from './model.mjs'
 import { validateLedgerText } from './validate.mjs'
 
 /**
@@ -299,12 +300,29 @@ export function removeLedgerItemText(text, id) {
 	return updated
 }
 
+function removeField(lines, block, field) {
+	const range = findFieldRange(lines, block, field)
+	if (!range) return
+	lines.splice(range.start, range.end - range.start)
+	block.endIndex -= range.end - range.start
+}
+
+/**
+ * The value that means "delete this key" rather than "write this value".
+ *
+ * A symbol, so it cannot arrive by accident from a `--set` on the command line or from
+ * YAML, both of which can produce every other JavaScript value including `null`.
+ */
+export const REMOVE_FIELD = Symbol('remove field')
+
 /**
  * Set fields on one entry. The single mutation path; everything else is a wrapper.
  *
  * A field set to `undefined` is skipped; a field set to `null` is written as an explicit
- * null. Removing a key is deliberately not offered here — it is the operation that turns
- * a valid entry into a stub, and the validator would refuse the result anyway.
+ * null; a field set to {@link REMOVE_FIELD} is deleted. Deletion is not offered on the
+ * command line and there is no `--unset`: it exists for the one caller below that has to
+ * withdraw a decision the entry is no longer making, and a general unset is the operation
+ * that turns a valid entry into a stub.
  */
 export function updateLedgerItemText(text, id, updates) {
 	assertValidBeforeMutation(text)
@@ -312,7 +330,8 @@ export function updateLedgerItemText(text, id, updates) {
 	const block = findUniqueBlock(blocks, id)
 	for (const [field, value] of Object.entries(updates)) {
 		if (value === undefined) continue
-		setField(lines, block, field, value)
+		if (value === REMOVE_FIELD) removeField(lines, block, field)
+		else setField(lines, block, field, value)
 	}
 	const updated = lines.join('')
 	assertValidAfterMutation(updated)
@@ -322,20 +341,36 @@ export function updateLedgerItemText(text, id, updates) {
 /**
  * Move one entry to a new status, stamping `last_reviewed`.
  *
- * The status must be declared. Note what this function does *not* know: whether the new
- * status means accepted, dismissed or anything else. It sets the field and lets the
- * validator decide whether the result is legal — which is why moving an entry to a status
- * whose class demands evidence fails with the validator's message rather than with a rule
- * written twice, and why `--reason` is just another field to set rather than a special
- * case for dismissal.
+ * The status must be declared. What this function does *not* know is what any status
+ * means: it sets the field and lets the validator decide whether the result is legal,
+ * which is why moving an entry to a status whose class demands evidence fails with the
+ * validator's message rather than with a rule written twice, and why `--reason` is just
+ * another field to set rather than a special case for dismissal.
+ *
+ * The one exception is withdrawing a decision the entry has stopped making. Dismiss an
+ * entry and then accept it, and the dismissal reason is still sitting there: the entry now
+ * says it was decided against and decided for, and before this it validated. Leaving that
+ * to the validator would only convert a silent contradiction into a refusal the writer
+ * cannot act on without hand-editing the file, which is the one thing §4 promises they will
+ * never have to do. So the transition withdraws it, and git keeps the decision that was
+ * replaced — which is where this format puts history everywhere else.
+ *
+ * Expressed against the class, never a status name, and driven by the same table the
+ * validator reads.
  */
 export function setLedgerItemStatusText(text, id, status, { reviewDate = todayIsoDate(), fields = {} } = {}) {
 	const data = assertValidBeforeMutation(text)
-	if (!indexLedger(data).statuses.has(status)) {
+	const index = indexLedger(data)
+	if (!index.statuses.has(status)) {
 		throw new Error('undeclared status: ' + status + ' — declare it in `vocabulary.statuses` first')
 	}
 	if (!isIsoDate(reviewDate)) throw new Error('review date must be YYYY-MM-DD')
-	return updateLedgerItemText(text, id, { status, last_reviewed: reviewDate, ...fields })
+	const cls = index.classOf(status)
+	const withdrawn = {}
+	for (const [field, classes] of Object.entries(DECISION_FIELD_CLASSES)) {
+		if (cls !== null && !classes.includes(cls) && !hasOwn(fields, field)) withdrawn[field] = REMOVE_FIELD
+	}
+	return updateLedgerItemText(text, id, { status, last_reviewed: reviewDate, ...withdrawn, ...fields })
 }
 
 /**

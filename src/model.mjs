@@ -94,6 +94,27 @@ export const CLASS_REQUIREMENTS = {
 	done: ['next_action', 'evidence'],
 }
 
+/**
+ * The two fields that *are* a decision written down, and the classes at which each can be
+ * true. Present at any other class, the field contradicts the entry's own status.
+ *
+ * This is not the ratchet's complement, and the difference is the whole point. The ratchet
+ * says what a class REQUIRES; §3's omission rule says an empty field must be absent. Neither
+ * covers a field carrying a real value that the entry's status denies — and F4 established
+ * that "not required here" is emphatically NOT the same as "forbidden here": `last_reviewed`
+ * on an untriaged entry means somebody looked and did not decide, which is honest.
+ *
+ * These two are different because each one asserts an outcome rather than recording work.
+ * A dismissal reason on an entry that was not dismissed says the project decided against
+ * something it accepted; `next_action` on a dismissed entry names outstanding work on
+ * something terminal. `evidence` is deliberately absent from this list: it is a record of
+ * what was found, not a claim about the decision, so it survives a change of mind intact.
+ */
+export const DECISION_FIELD_CLASSES = {
+	non_target_reasons: ['dismissed'],
+	next_action: ['untriaged', 'parked', 'accepted', 'done'],
+}
+
 /** Every field the ratchet can require of an entry in some class. */
 export function ratchetedFields() {
 	const fields = new Set()

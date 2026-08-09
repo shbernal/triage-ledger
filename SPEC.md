@@ -395,6 +395,38 @@ open and one you cannot — but the reason it is a MUST rather than a suggestion
 semantic: at a classified status, `non_target_reasons: []` is a real and *different*
 assertion from having no such key. Absent and empty **MUST** stay distinguishable.
 
+### One entry, one decision
+
+The rule above is about a field with nothing behind it. This one is about a field with
+something behind it that the entry's own status denies.
+
+Two fields *are* a decision written down. `non_target_reasons` says the project decided
+against this; `next_action` says work on it is outstanding. So:
+
+- `non_target_reasons` **MUST NOT** be present unless the entry's status is class
+  `dismissed`.
+- `next_action` **MUST NOT** be present at class `dismissed`.
+
+An entry that carries both a dismissal reason and an acceptance is not expressing nuance,
+it is expressing two decisions, and a reader six months from now has no way to tell which
+one the project acted on. The same goes for a terminal entry naming work still to do: `done`
+requires `next_action: none` precisely because a finished entry has to say so explicitly,
+and a dismissed one has nothing to say.
+
+**This is not the ratchet's complement, and conflating the two would break §3's own
+example.** "Not required at this class" is emphatically not "forbidden at this class" —
+`last_reviewed` on an untriaged entry means somebody looked and did not decide, which is
+worth recording. `evidence` is likewise not on the list above, and deliberately: it records
+what was found rather than what was decided, so it survives a change of mind intact, and a
+dismissal reason may even demand it.
+
+The rule exists because the contradictory state is easy to reach and validated for a long
+time. Dismiss an entry, change your mind, accept it — a writer that sets the new status
+without withdrawing the old decision leaves both. **A tool performing a status transition
+MUST withdraw the fields the new class forbids**, rather than refusing: the old decision is
+in the history, which is where this format keeps everything it stops asserting, and
+refusing would leave the writer hand-editing the file, which §4 exists to prevent.
+
 ### Comments are part of the format
 
 The file is meant to be edited by hand *and* by tooling. Comments in the vocabulary
@@ -700,6 +732,51 @@ closed the entry are the same diff.
 A prune commit **SHOULD** name each removed id and the commit that closed it; the
 message is the index back into history. The final deletion commit **SHOULD** name the
 retirement summary document.
+
+### Two people, one file
+
+The ledger is one file in a repository, so two people draining it on two branches will
+merge it, and everything above assumes a single writer. The rules in this section are what
+that assumption costs.
+
+**Every rule in this document constrains a state, not a transition.** The ratchet says what
+an entry at class `done` must carry; nothing says that an entry which reached `done` may not
+return to `untriaged`, because no rule ever sees two versions of the ledger at once. A
+merge that undoes a week of triage therefore violates nothing, and the burn-down count
+simply gets smaller. **Monotonicity is a property of your workflow and not of this format**,
+and a validator cannot be asked to supply it.
+
+That matters because of how the file merges. Triage is additive — deciding an entry appends
+fields inside it, and two such edits in different entries do not interact, so branches that
+decided different entries merge cleanly and correctly. **Pruning is what conflicts**, because
+removing an entry deletes an entry-sized block and the two sides realign; the resulting
+conflict boundary falls where the *text* differs, which is not where an entry ends.
+
+So:
+
+- **Prune on the shared branch, not on a feature branch.** This is not the same advice as
+  the subsection above: separating prune from close into two commits does not help a merge,
+  which compares trees and never sees your commits.
+- A conflict in the ledger **MUST NOT** be resolved by keeping both sides. Both sides can
+  put a trailing field onto the wrong entry and reinstate entries the other branch pruned,
+  and the result frequently validates — the ratchet checks each entry, and an entry restored
+  to `untriaged` is a perfectly legal entry.
+- For the same reason, a union merge driver (`merge=union` in `.gitattributes`) **MUST NOT**
+  be configured for the ledger. It performs exactly that resolution, on every merge, with no
+  conflict raised and nothing for anyone to review.
+- Set `merge.conflictStyle` to `diff3` or `zdiff3` before you resolve one. In the default
+  two-sided marker, an entry that one branch pruned is indistinguishable from an entry the
+  other branch added, and the natural reading is the wrong one. With the merge base shown,
+  both are unambiguous.
+- A tool **MUST** refuse to read or mutate a ledger containing conflict markers, and
+  **SHOULD** say that is what it found. Left to a YAML parser this is several errors about
+  implicit keys and none about a merge.
+
+What the format does defend, and it is worth knowing which half you are getting: the
+two-sided cost catches a decision assembled out of two branches' halves, because an entry
+that took its status from one side and its trailing fields from the other is incomplete on
+whichever side it moved to. What nothing catches is a decision quietly reverted, because a
+reverted entry is indistinguishable from one never decided.
 
 ---
 
