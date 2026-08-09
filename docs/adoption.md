@@ -58,6 +58,12 @@ not change under you. Drift in a file this size is a build failure, not a review
 on Windows as well as Linux if you seed from `gh`: that is where CRLF gets into summaries,
 and Linux-only CI never sees it.
 
+Do not copy this repo's `.gitattributes` while you are at it. It pins LF because our own
+tests compare fixture text against literal `\n`, which is a fact about testing a
+line-surgery tool and not about ledgers. A CRLF ledger validates, and every mutation keeps
+whichever ending the file already uses — so under `core.autocrlf=true` the ledger behaves
+like every other text file in your repo, which is the only thing you want from it.
+
 ## The integration surface, which is also the removal checklist
 
 Six things. If you cannot list everything the system touches, you cannot remove it, and
