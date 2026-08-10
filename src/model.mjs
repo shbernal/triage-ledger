@@ -100,9 +100,9 @@ export const CLASS_REQUIREMENTS = {
  *
  * This is not the ratchet's complement, and the difference is the whole point. The ratchet
  * says what a class REQUIRES; §3's omission rule says an empty field must be absent. Neither
- * covers a field carrying a real value that the entry's status denies — and F4 established
- * that "not required here" is emphatically NOT the same as "forbidden here": `last_reviewed`
- * on an untriaged entry means somebody looked and did not decide, which is honest.
+ * covers a field carrying a real value that the entry's status denies. And "not required
+ * here" is emphatically NOT the same as "forbidden here": `last_reviewed` on an untriaged
+ * entry means somebody looked and did not decide, which is honest and is worth recording.
  *
  * These two are different because each one asserts an outcome rather than recording work.
  * A dismissal reason on an entry that was not dismissed says the project decided against
