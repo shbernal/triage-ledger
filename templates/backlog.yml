@@ -152,9 +152,13 @@ vocabulary:
       describes: An automated test demonstrates the behaviour.
 
   # FIELDS YOUR PROJECT ADDS. The six base fields and the ratchet above them are the
-  # spec's; everything else an entry carries is yours, and a field whose values are
-  # constrained is declared here — for the same reason every other constrained value is.
+  # spec's; everything else an entry carries is yours, and a field constrained to a fixed
+  # set of names declares them here — for the same reason every other constrained value is.
   # There is no privileged `tags:` or `priorities:` list; they are just fields.
+  #
+  # Constrained to a fixed set of NAMES, which is narrower than constrained. An id with a
+  # shape, a number in a range, a taxonomy you do not own: all constrained, none of them
+  # `values:`. Declare those as free text — a typo in one is wrong, not a new category.
   #
   # SCAFFOLD — uncomment and edit if you need one, then delete this line and the rest of
   # this block if you do not.

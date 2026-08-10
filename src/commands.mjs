@@ -828,7 +828,23 @@ export async function commandRetire(options, io) {
 		const stats = computeStats(index)
 		const byType = new Map()
 		for (const item of index.items) byType.set(item.type, (byType.get(item.type) || 0) + 1)
-		const counted = [...byType.entries()].map(([type, count]) => count + ' ' + type + (count === 1 ? '' : 's')).join(' and ')
+		// Type names are the project's, so the plural has to be computed rather than assumed:
+		// appending `s` to a name ending in `y` printed `5 advisorys` in the one artifact §6
+		// says outlives everything.
+		const plural = (word) =>
+			/[^aeiou]y$/.test(word)
+				? word.slice(0, -1) + 'ies'
+				: /(?:s|x|z|ch|sh)$/.test(word)
+					? word + 'es'
+					: word + 's'
+		const phrase = (entries) =>
+			entries.map(([type, count]) => count + ' ' + (count === 1 ? type : plural(type))).join(' and ')
+		// §3: the upstream block describes one import, and only kinds with a `source_pattern`
+		// were in it. Counting every type into the "inherited from `repo`" clause attributes a
+		// local `todo` — or a scan you ran yourself — to somebody else's issue tracker, in the
+		// sentence a future contributor reads instead of re-asking the questions.
+		const external = [...byType.entries()].filter(([type]) => typeof index.sourceKinds.get(type)?.source_pattern === 'string')
+		const local = [...byType.entries()].filter(([type]) => typeof index.sourceKinds.get(type)?.source_pattern !== 'string')
 		const dismissed = stats.byClass.dismissed ?? 0
 		const done = stats.byClass.done ?? 0
 		const ledgerPath = path.relative(process.cwd(), options.ledger).split(path.sep).join('/')
@@ -840,7 +856,7 @@ export async function commandRetire(options, io) {
 		// it is sitting in the same sentence, so the tool can say how many are missing instead
 		// of asking the reader to remember. Counted over entries carrying external provenance,
 		// because `matched` counts the import and a local `todo` was never part of it.
-		const imported = index.items.filter((item) => typeof index.sourceKinds.get(item?.type)?.source_pattern === 'string').length
+		const imported = external.reduce((total, [, count]) => total + count, 0)
 		const pruned = isMapping(upstream) && Number.isInteger(upstream.matched) ? Math.max(0, upstream.matched - imported) : 0
 		const missing =
 			pruned === 0
@@ -849,11 +865,20 @@ export async function commandRetire(options, io) {
 				  ' already been pruned from this ledger and ' + (pruned === 1 ? 'is' : 'are') +
 				  ' in neither count — `git log -- ' + ledgerPath + '`.'
 
-		const draft = isMapping(upstream)
-			? 'Triaged ' + counted + ' inherited from `' + upstream.repo + '` as of ' + upstream.imported_at +
-			  ', filtered by `' + upstream.filter + '` (' + upstream.matched + ' of ' + upstream.total_open +
-			  ' open; ' + upstream.skipped + ' outside the filter). Kept ' + done + ', dropped ' + dismissed + '.' + missing
-			: 'Triaged ' + counted + '. Kept ' + done + ', dropped ' + dismissed + '.'
+		const clauses = []
+		if (isMapping(upstream)) {
+			clauses.push(
+				(phrase(external) || 'nothing still in the file') + ' inherited from `' + upstream.repo + '` as of ' +
+				upstream.imported_at + ', filtered by `' + upstream.filter + '` (' + upstream.matched + ' of ' +
+				upstream.total_open + ' open; ' + upstream.skipped + ' outside the filter)'
+			)
+		} else if (external.length) {
+			clauses.push(phrase(external))
+		}
+		if (local.length) clauses.push(phrase(local) + ' raised in this project')
+		const draft =
+			'Triaged ' + (clauses.join(', and ') || '0 entries') +
+			'. Kept ' + done + ', dropped ' + dismissed + '.' + missing
 
 		if (options.json) {
 			io.stdout(

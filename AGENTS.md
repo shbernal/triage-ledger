@@ -44,6 +44,12 @@ generalizes: **a constrained value with no home in the vocabulary.** If you meet
 again, you have probably found a field that belongs under `vocabulary.fields`, not a fifth
 level — check that first.
 
+Expect that check to succeed and the rung still not to hold, because the tell is wider than
+`values:` is. An id with a shape, a number in a range, a taxonomy nobody owns — each is a
+constrained value, each is a field, and none of them is a fixed set of names. That is a
+limit of `values:`, stated in §7, and not a fifth inversion waiting to be found; the answer
+there is free text and a sentence in the document the entries retire into.
+
 **Mutations are line surgery, never parse→dump.** Comments in the vocabulary block are
 load-bearing — they carry the history of why the vocabulary looks the way it does — and a
 round-trip through a YAML parser and dumper destroys them, along with block scalars and key

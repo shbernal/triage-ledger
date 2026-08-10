@@ -633,3 +633,39 @@ test('the retirement summary counts what was pruned, because the upstream block 
 		assert.equal(payload.stillPresent, 1)
 	})
 })
+
+test('the retirement summary attributes to the upstream only what came from it', async () => {
+	// `upstream:` describes one import (§3) and a kind with no `source_pattern` was never in
+	// it. Counting every type into the "inherited from `repo`" clause credits somebody else's
+	// issue tracker with a `todo` you wrote down and with whatever a local scan produced —
+	// in the sentence §6 calls the one artifact that outlives everything.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		const text = await fs.readFile('docs/backlog.yml', 'utf8')
+		await fs.writeFile(
+			'docs/backlog.yml',
+			text.replace(/^ {2}- type: todo$/m, "  - type: advisory\n    source_pattern: '^GHSA-'\n  - type: todo")
+		)
+		for (const [id, source, type] of [
+			['local-1', 'local', 'todo'],
+			['adv-1', 'GHSA-aaaa-bbbb-cccc', 'advisory'],
+			['adv-2', 'GHSA-dddd-eeee-ffff', 'advisory'],
+		]) {
+			await run(
+				['add', '--id', id, '--source', source, '--type', type, '--status', 'needs-triage',
+					'--summary', 'a thing', '--first-seen', '2026-01-01'],
+				capture().io
+			)
+		}
+
+		const { io, out } = capture()
+		await run(['retire', '--summary'], io)
+		const draft = out.join('\n')
+		assert.match(draft, /2 advisories inherited from `acme\/renderer`/)
+		assert.match(draft, /, and 1 todo raised in this project\. Kept /)
+		assert.doesNotMatch(draft, /todos? inherited/)
+		// The type name is the project's, so the plural has to be computed. `advisorys` was
+		// what appending `s` produced, and it was in the artifact somebody pastes into docs.
+		assert.doesNotMatch(draft, /advisorys/)
+	})
+})

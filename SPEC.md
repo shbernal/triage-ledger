@@ -202,6 +202,16 @@ source_kinds:
   where both the id and the source end in a number, the numbers **MUST** agree. This
   catches the copy-paste error, which happens during bulk seeding and nowhere else.
 
+The number-agreement half of that assumes the source is numbered. Against an identifier
+that is not — `GHSA-fx2h-pf6j-xcff`, a commit hash, a UUID — the check applies or not
+according to whether the last character happens to be a digit, which is to say at random,
+and an entry can pass by coincidence: a source ending in `3` sitting at `-3` in your own
+numbering. Passing by coincidence is worse than failing, because failing is visible.
+Where the source id is alphanumeric, **carry it into your own id** —
+`adv-fx2h-pf6j-xcff` for `GHSA-fx2h-pf6j-xcff` — and the guessing stops. Neither id ends
+in a number, the check no longer fires either way, and the mismatch it exists to catch has
+been made impossible by construction rather than caught by luck.
+
 A ledger with **no external `source_pattern` anywhere** is a project with no upstream.
 That case needs no special support; it is one line of your YAML.
 
@@ -214,6 +224,15 @@ Six months later, a reader has to be able to tell *"we triaged this backlog"* fr
 *"we triaged the last three years of it."* Nothing else in the file records that, and
 if you seeded with any filter at all, the honest claim is the second one. `matched`,
 `skipped` and `total_open` are what the retirement summary (§6) is written from.
+
+**The block describes one import, and only the kinds carrying a `source_pattern` are in
+it.** One `repo`, one `filter`, one set of counts. Entries of a local kind — a `todo`
+somebody wrote down, a finding from a scan you ran yourself, a note from reading the code
+— came from nowhere external and were never what `matched` counted, so a tool writing the
+retirement summary **MUST NOT** attribute them to `repo`. A ledger holding both is the
+ordinary case rather than an odd one: the pile you inherited is what starts the file, and
+your own work is what keeps arriving in it. What the block cannot record is a second
+import, and that is the point — see §4 on why nothing re-reads the source.
 
 ### `vocabulary` — the file teaches the tooling, not the other way round
 
@@ -725,6 +744,15 @@ missing from a reason is an error the moment the reason exists. Checking only at
 teardown defeats the entire argument for declaring destinations early — that it is
 honest then and a chore later.
 
+Which means a reason that dismissed nothing still holds the gate open, and that is the rule
+working rather than a wrinkle in it. Writing a vocabulary against a pile you have not read
+means over-declaring — §7 tells you to expect that, and to add reasons late — and the ones
+written earliest are the likeliest to go unused, so the destination you never had cause to
+write is a plausible last thing standing between you and `items: []`. There are only two
+honest ways past it: the boundary is one you still believe in, and it owes its sentence
+whether or not anything was sorted against it, or it is not, and it comes out of the
+vocabulary.
+
 ### Distillation is per *reason*, not per item
 
 A destination path alone is not a contract. Twelve entries dismissed `commonjs` should
@@ -735,6 +763,26 @@ git history.
 
 Without this rule, retirement is a file move, and your two hundred dismissals become two
 hundred lines somewhere else.
+
+**Where the reason is a category of argument rather than a finding, the destination owes a
+line per entry.** The `commonjs` twelve owe one sentence because there the reason *is* the
+finding: knowing the project is ESM-only tells you everything all twelve were dismissed
+for, and no two of them differ in any way a reader will ever care about. A reason like
+*not applicable to this project's inputs* is not that. It names the shape of an argument,
+and each entry under it made a different one — this input is never attacker-controlled,
+that code path is unreachable from any entry point — so distilling to the reason keeps the
+shape and throws away every instance of it. The next reader has to redo the work the ledger
+already charged for, which is the failure this rule exists to prevent, arrived at by
+following the rule.
+
+The vocabulary already marks which kind you have. **A reason declaring `requires_evidence`
+(§7) is a reason whose instances each carry a distinct claim** — demanding evidence per
+entry is precisely the statement that the boundary does not settle them — and those are the
+reasons whose destination gets a line apiece. A reason demanding no evidence is one the
+boundary does settle, and one sentence is the whole of it. Note what this does not license:
+the per-entry lines are the *conclusions*, one clause each, not the migrated entries. If
+they cannot be written that short, the reason was covering several decisions wearing one
+name, and the fix is upstream of retirement.
 
 **And nothing verifies that the sentence got written.** A destination is checkable to the
 extent that a path resolves, which is what "checkable" above means and all it means: a
@@ -1057,6 +1105,16 @@ Read that as the general test, because `superseded` is only the sharpest instanc
 a status is class `done` when there is something in this repository to point at, and
 class `dismissed` when the honest output is a sentence.
 
+**A decision that has to be revisited on a date is one this format records and does not
+schedule.** An accepted risk, a waiver, an exception granted until the next release: each
+is honestly `dismissed`, because each is a decision *against* doing the work as filed, and
+a class that blocks retirement would turn every one of them into a permanent open item —
+which is the outcome the register they are written into exists to prevent. What follows is
+that nothing re-raises them. `dismissed` is terminal, and `last_reviewed` records when
+somebody looked, never when somebody must look again. Put the date in the destination
+document. That is the artifact still there when the ledger is gone, and a date that must
+outlive the ledger cannot be stored in it.
+
 A project **SHOULD** define at least one status per class it intends to use, and the
 names are entirely its own.
 
@@ -1086,8 +1144,8 @@ nearest, so the "distinct from X" shape earns its place here as well.
 ### Fields your project adds
 
 The six base fields and the ratchet above them are the spec's. Everything else an entry
-carries is yours, and **a field whose values are constrained MUST be declared**, for the
-same reason every other constrained value is: otherwise a typo is a new category.
+carries is yours, and **a field constrained to a fixed set of names MUST declare them**,
+for the same reason every other constrained value is: otherwise a typo is a new category.
 
 ```yaml
 fields:
@@ -1100,12 +1158,31 @@ fields:
 
 - `field` **MUST** be present and unique, and **MUST NOT** be one of the base fields.
 - `values`, when declared, is the field's vocabulary: an entry carrying a value not on
-  the list is an error. A field with no `values` is free text.
+  the list is an error. `values` is a flat list of names; an entry's value **MAY** be a
+  list, and then **every element MUST be declared**. Some attributes are natively
+  multi-valued — an advisory that is both a path traversal and an information disclosure
+  is a different thing from either alone — and the check is the same check, applied
+  element-wise. A field with no `values` is free text.
 - `types`, when declared, restricts which entry kinds **MAY** carry the field.
 - `required_when_triaged: true` makes it required on every entry that has left class
   `untriaged`. Deliberately coarser than the ratchet — "not undecided yet" and nothing
   finer. The ratchet is normative because it is short; per-class obligations on
   project-declared fields would make it neither.
+
+**Constrained to a fixed set of names is narrower than constrained**, and much of what a
+project wants to pin down is the wider thing. An identifier with a shape rather than a
+value set (`GHSA-fx2h-pf6j-xcff`, a semver range); a number in a range (a severity score,
+0.0 to 10.0, and absent as often as not); a taxonomy you neither own nor can enumerate
+(CWE has some 940 identifiers, and you will meet the 13th during seeding, as a validation
+error). All three are constrained. None belongs in `values:`. Declare them as free text,
+and let the destination document carry what they mean.
+
+The temptation is to grow a `pattern:` key, and it should be resisted twice over. It puts a
+regular-expression engine into a format whose first design requirement is that it works in
+a text editor. And it misreads what `values:` is for: the failure being prevented is a
+*silently invented category*, which only a fixed set of names can suffer. A mistyped
+severity score is wrong, and wrong is a different problem from new — nobody sorts two
+hundred entries against it, and no sentence has to be written from it at retirement.
 
 This is the same inversion as `source_kinds` and as `class`, applied to fields, and it
 is the last one. What remains fixed — the six base fields, the five classes, the shape

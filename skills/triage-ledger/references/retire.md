@@ -66,6 +66,15 @@ If a reason's entries turn out to have nothing in common — if you cannot write
 sentence — say so rather than writing a vague one. It means that reason was applied
 inconsistently, and the honest fix is to split the entries across better reasons first.
 
+**Check `requires_evidence` before you distil.** A reason demanding evidence per entry is a
+reason whose instances each carry a distinct claim — that is what demanding it says — so
+one sentence keeps the shape of the argument and throws away every instance of it. Those
+reasons get a line per entry at their destination: the conclusion, one clause each, not the
+migrated entry. `commonjs` is the other kind. Knowing the project is ESM-only tells you
+everything all twelve entries were dismissed for, so one sentence is the whole of it. Get
+this backwards and the next reader redoes the analysis the ledger already charged for,
+which is the failure the whole step exists to prevent.
+
 ## 3. Write the summary
 
 ```sh

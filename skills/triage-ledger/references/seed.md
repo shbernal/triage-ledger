@@ -53,6 +53,22 @@ dead project "last updated" does not measure project activity — the maintainer
 It measures *"this still hurts someone"*, which is exactly the signal a triage wants.
 Filtering on when something was *filed* selects for a different and much worse set.
 
+**A rule-based source has a step before the ledger.** If the pile comes from a scanner, a
+linter or a grep — anything applying rules rather than reporting incidents — then most of
+what it emits is one decision repeated, not many decisions. A single pattern routinely
+accounts for the overwhelming majority of the hits and is wrong on every one of them: a
+path-traversal rule that matches every relative import produces hundreds of findings and a
+single verdict, *that rule is off here*. The ledger's unit is the entry — one entry, one
+decision — and it has no unit for "this rule does not apply to this project", so seeding
+first means paying per entry for something you decided once.
+
+So tune the rules, then import. Run the scan, group the hits by rule, and decide per rule
+whether it is worth reading at all. That decision belongs in the scanner's configuration,
+where it keeps working, and not in a ledger designed to be deleted; what survives it is
+what the ledger is for. Record which rules you turned off and why, next to the filter and
+for the same reason — it is the difference between "we triaged the scan" and "we triaged
+the part of it we kept".
+
 **Be resumable.** Several hundred entries will not arrive in one pass — a rate limit, a
 dropped connection, a closed laptop. Re-running must skip ids already present and must not
 touch an entry whose status has moved. If you are writing the import yourself, build that
