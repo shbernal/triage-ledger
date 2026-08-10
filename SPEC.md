@@ -566,6 +566,30 @@ nothing has moved since* — is a dismissal reason: terminal, and it owes a dest
 (`null` is fine here; it is `about: item-state`). The same two words point at opposite
 ends of the lifecycle, and a vocabulary that blurs them will blur others.
 
+### The vocabulary decides *which* dismissal, not *whether* to dismiss
+
+Both prices above are charged for the exit you have already chosen. Nothing is charged for
+the choosing, and the choosing is what decides whether the project owes work: dismissal is
+terminal, `accepted` and `parked` are not. Two readers of one well-written vocabulary will
+sort the same entry under the same reason, pointed at the same destination, and still
+disagree about whether it should have been dismissed at all. The reason set answers *which
+door*; it is silent on *whether*.
+
+That silence is deliberate — a format that decided which door an entry leaves by would be
+deciding what your project is for, which §1 explicitly does not. What can be written down
+is the question that separates the doors, and it is not "is this real":
+
+> **Would we do this if it arrived today, with no history attached?**
+
+No, for a reason about this project → dismiss, under the reason that says so. No, for a
+reason about the item itself → dismiss, and it may evaporate (§6). Yes, but not now →
+`parked`, which is an obligation and not an exit. Yes → `accepted`, and pay the evidence.
+
+Ask it out loud, because an inherited entry arrives carrying weight that has nothing to do
+with its merits. A defect filed four years ago against code this project still ships is
+neither more nor less worth fixing for having waited; the queue position it earned is the
+one fact about it that carries no information, and it is the fact hardest to put down.
+
 ### The drain has a second half, and it is longer than the first
 
 Everything above is about an entry leaving `untriaged`. That is not the whole phase.
@@ -686,6 +710,15 @@ attached to dismissal would vanish. So it is constrained by what the reason is *
 
 Policy reasons are precisely the ones a future contributor will re-litigate, which is
 why they are the ones that owe a destination.
+
+One consequence of that split is worth naming, because nothing else here says it: **the
+cheapest exit and the traceless exit are the same exit.** A reason permitted to evaporate
+is a reason that owes no document, so the dismissals leaving nothing behind in the tree
+are exactly the ones that cost least to make — and what they discard is not scope but
+claims about the software: nobody reproduced it, nothing moved. Recoverable from git,
+which is the whole deal, and absent from the documents anyone actually reads. That is not
+an argument for making `item-state` owe a destination; it has nothing durable to say once
+its item is gone. It is an argument for spending the care where the format stops charging.
 
 **Completeness is checked when the reason is defined, not at retirement.** A destination
 missing from a reason is an error the moment the reason exists. Checking only at
@@ -950,6 +983,13 @@ perjury" is true. A reviewer reading the diff sees a legal reason on a legal ent
 nothing to point at. The type is the one part of that mismatch a validator can see, so it
 is the one part this format asks you to write down.
 
+The same argument reaches the status side, and the key is available there too — see
+*Statuses* below. Parking is an exit in practice and it is the cheapest one in the format:
+a `parked` status owes no destination and no evidence, so *we intend to try to reproduce
+this* goes vacuously true on a feature request in precisely the way the cheapest dismissal
+reason does. The key belongs wherever a project writes a sentence that hundreds of entries
+will be sorted against, which is both lists and not only one of them.
+
 ### 4. Every dismissal reason declares its retirement destination
 
 `retire_to` and `about`, per §6. **MUST**, both of them.
@@ -994,6 +1034,14 @@ statuses:
 - `requires` is the escape hatch that keeps the class set small: a status **MAY** name
   extra fields required of entries at that status. `superseded` needs a pointer to what
   replaced it and nothing else does — that is one extra field, not a sixth class.
+- `types` **MAY** be declared, with the same meaning it has on a dismissal reason above: a
+  list of declared entry types, and the status **MUST NOT** be applied to an entry of any
+  other type. Most statuses should not carry it — `accepted` is about the ask and not about
+  how the ask arrived. The one it is for is a parking status whose `describes` names an
+  action somebody intends to take: *we will try to reproduce this* is a sentence about a
+  reported behaviour, and there is nothing to reproduce in a feature request or a patch.
+  Parking one anyway is legal, validates, and holds retirement open on a promise nobody can
+  keep, which is the true-and-empty failure with the obligation left running.
 
 **Classing a status `done` costs `evidence.local_files`**, per §3's ratchet, and that
 price is not negotiable from the vocabulary layer — it is the rule that makes retirement

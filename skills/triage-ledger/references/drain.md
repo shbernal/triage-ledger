@@ -45,6 +45,17 @@ will eventually force a question about. Do not un-park them to shorten the list.
 
 ## For each entry, one of four moves
 
+One question picks the move, and it is not "is this real":
+
+> **Would we do this if it arrived today, with no history attached?**
+
+No, for a reason about us → dismiss. No, for a reason about the item → dismiss, and it
+evaporates. Yes, but not now → park, which is an obligation. Yes → accept, and pay the
+evidence. Everything below prices the move you picked; nothing prices the picking, and the
+picking is what decides whether the project owes work. Ask it out loud, because an
+inherited entry arrives carrying weight that has nothing to do with its merits: four years
+in a queue is the one fact about it that carries no information.
+
 **Dismiss.** Name a declared reason. You are not deciding where the finding goes — that
 decision was made when the vocabulary was written, and you are spending it. Run
 `values non_target_reasons` and pick the closest existing one. Do not invent a synonym; see
@@ -61,7 +72,11 @@ npx triage-ledger@0.1 set-status <id> <status> --evidence source-read --local-fi
 
 **Park.** Legitimate, and *not* an exit. A parked entry blocks retirement forever by
 design: "we'll look at it later" is an obligation and the ledger's job is to keep saying so.
-Park when you genuinely intend to come back, not when you want the queue shorter.
+Park when you genuinely intend to come back, not when you want the queue shorter. It is also
+the move that costs least, so read the status's own sentence against the entry the same way
+you would a dismissal reason — "we will try to reproduce this" says nothing about a feature
+request, and there is nothing to reproduce in a patch. A status may declare `types` and the
+tool will refuse that mismatch; the rest is yours.
 
 **Rewrite the summary, then decide.** Some entries arrived with useless titles — a bare
 number, three words, a stack trace. Rewriting one is a triage act, not tampering: `source`

@@ -51,6 +51,12 @@ vocabulary:
   # You may name as many statuses as you like against these five. What you may not do is
   # invent a lifecycle with no class for one of them. There is no honest ledger in which
   # "decided against" cannot happen.
+  #
+  # A status MAY also carry `types: [kind, ...]` — the same key the dismissal reasons use
+  # below, and it means the same thing: declare it where the status's own sentence is only
+  # true of some kinds of entry. The case it exists for is a parking status that promises
+  # an action, because "we will try to reproduce this" is not a promise anybody can keep
+  # about a feature request, and parking one anyway holds retirement open on it forever.
   statuses:
     - status: needs-triage
       class: untriaged

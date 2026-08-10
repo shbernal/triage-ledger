@@ -279,6 +279,10 @@ export async function commandValues(options, io) {
 			lines.push('')
 			lines.push('  ' + entry.value + (suffix.length ? '  [' + suffix.join(', ') + ']' : ''))
 			if (entry.describes) lines.push('    ' + String(entry.describes).trim().replace(/\s*\n\s*/g, ' '))
+			// A restriction nobody can see is one they find out about from a validation error
+			// after the decision is made, and this listing is what gets consulted while making
+			// it. Printed for whichever list carries it — statuses and reasons both do.
+			if (entry.types?.length) lines.push('    only for: ' + entry.types.join(', '))
 			if (entry.requires_evidence?.length) lines.push('    requires evidence: ' + entry.requires_evidence.join(', '))
 		}
 		io.stdout(lines.join('\n'))

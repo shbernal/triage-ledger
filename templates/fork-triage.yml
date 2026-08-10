@@ -72,6 +72,11 @@ vocabulary:
         "we will look" is an outstanding obligation. Distinct from the dismissal reason
         stale-no-repro, where nobody tried and nothing has moved: same two words,
         opposite ends of the lifecycle.
+      # Parking costs nothing — no destination, no evidence — which makes it the third
+      # cheap exit and the one that leaves an obligation running behind it. There is
+      # nothing to reproduce in a feature request or in a patch, so this promise can only
+      # honestly be made about something that claimed a behaviour.
+      types: [issue, todo]
     - status: deferred
       class: parked
       describes: Not now. Routine review may re-raise it on its own.

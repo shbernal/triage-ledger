@@ -600,6 +600,47 @@ test('a dismissal reason whose sentence is only true of some entries says which'
 	assert.deepEqual(errorsFor(dismissed.replace('      types: [chore]\n', '')), [])
 })
 
+test('a status whose sentence is only true of some entries says which', () => {
+	// The same failure on the status side, where it is worse in one respect: parking costs
+	// nothing at all and leaves an obligation running, so a promise nobody can keep holds
+	// retirement open forever. "We will try to reproduce this" says nothing about a feature
+	// request, in the way the cheapest dismissal reason says nothing about a patch.
+	const typed = LEDGER.replace('source_kinds:\n  - type: todo', 'source_kinds:\n  - type: todo\n  - type: request').replace(
+		'    - status: dropped',
+		'    - status: waiting\n      class: parked\n      describes: We intend to try to reproduce this.\n      types: [todo]\n    - status: dropped'
+	)
+	const parked = replaceItems(
+		typed,
+		`  - id: req-1
+    source: local
+    type: request
+    summary: "Please add a thing"
+    status: waiting
+    first_seen: 2026-01-01
+    last_reviewed: 2026-02-02
+`
+	)
+	const errors = errorsFor(parked)
+	assert.equal(errors.length, 1, errors.join('\n'))
+	assert.match(errors[0], /`waiting` is declared only for types todo, not `request`/)
+
+	// And an unrestricted status takes it, which is what most statuses should do — being
+	// decided for is about the ask, not about how the ask arrived.
+	assert.deepEqual(errorsFor(parked.replace('      types: [todo]\n', '')), [])
+})
+
+test('a status cannot restrict itself to a type nothing declares', () => {
+	const bogus = LEDGER.replace('      class: untriaged', '      class: untriaged\n      types: [nonexistent]')
+	assert.ok(
+		errorsFor(bogus).some((e) => /`types` names an undeclared entry type: nonexistent/.test(e)),
+		errorsFor(bogus).join('\n')
+	)
+	// Empty is a mistake, not a restriction — read as "no types at all" it would forbid
+	// every entry from reaching the status, which is not a thing anyone means.
+	const empty = LEDGER.replace('      class: untriaged', '      class: untriaged\n      types: []')
+	assert.ok(errorsFor(empty).some((e) => /`types` must be a non-empty list/.test(e)), errorsFor(empty).join('\n'))
+})
+
 test('a reason cannot restrict itself to a type nothing declares', () => {
 	const bogus = LEDGER.replace('      about: item-state', '      about: item-state\n      types: [nonexistent]')
 	assert.ok(

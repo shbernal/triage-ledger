@@ -21,6 +21,12 @@ write the difference into `describes`, because that is exactly the pair that wil
 be applied interchangeably. Do not invent a status for something that is really an extra
 field: a status may declare `requires: [some_field]` instead.
 
+A status may also declare `types`, the same key described under the reasons below: the entry
+kinds it may be applied to. Reach for it on a parking status whose `describes` promises an
+action. Parking is the cheapest move in the whole format — no destination, no evidence — and
+*"we will try to reproduce this"* is a promise nobody can keep about a feature request or a
+patch, while the entry it is written on holds retirement open for as long as it stands.
+
 Classing a status `done` costs `evidence.local_files` on every entry that reaches it, so
 class `done` only what will have files to name. "Covered by something else" reads like a
 `done` and usually is not one — see [drain.md](drain.md).

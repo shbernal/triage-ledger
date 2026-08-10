@@ -254,6 +254,21 @@ function validateStatuses(report, index) {
 				report.error(label + ': `requires` must be a list of field names')
 			}
 		}
+		// The same key and the same meaning as on a dismissal reason: a status whose sentence
+		// is only true of some kinds of entry says which. It belongs here because parking is
+		// an exit too and it is the one that costs nothing — no destination, no evidence — so
+		// "we intend to try to reproduce this" goes vacuously true on a feature request in
+		// exactly the way the cheapest dismissal reason does. Until this existed the format
+		// could see the one and not the other, and the difference was not a principle.
+		if (hasOwn(entry, 'types')) {
+			if (!Array.isArray(entry.types) || entry.types.length === 0) {
+				report.error(label + ': `types` must be a non-empty list of declared entry types')
+			} else {
+				for (const type of entry.types) {
+					if (!index.sourceKinds.has(type)) report.error(label + ': `types` names an undeclared entry type: ' + type)
+				}
+			}
+		}
 	}
 	// `describes` is worth asking for exactly where two statuses could be confused, which
 	// is when a project declares more than one against the same class — `deferred` next to
@@ -612,6 +627,17 @@ function validateItem(report, index, item, position, today) {
 			report.error(label + ': undeclared status `' + item.status + '` — declare it in `vocabulary.statuses`')
 		}
 		return
+	}
+
+	// A status may restrict which kinds of entry can hold it, exactly as a dismissal reason
+	// may. Checked against the declaration rather than the class, because the restriction is
+	// a property of the sentence somebody wrote under `describes` and not of the five.
+	const declaredStatus = index.statuses.get(item.status)
+	if (Array.isArray(declaredStatus?.types) && declaredStatus.types.length > 0 && !declaredStatus.types.includes(item.type)) {
+		report.error(
+			label + ': ' + atStatus(item) + ' is declared only for types ' + declaredStatus.types.join(', ') + ', not `' + item.type +
+				'` — its sentence is not true of this kind of entry'
+		)
 	}
 
 	for (const field of CLASS_REQUIREMENTS[cls]) {
