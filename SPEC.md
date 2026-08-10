@@ -91,8 +91,12 @@ backlog; if you find yourself curating it in year two, read §8.
 | Phase | State of the ledger | You are doing |
 |---|---|---|
 | **Seed** | populated, mostly undecided | getting the pile into the file (§4) |
-| **Drain** | shrinking | deciding, with a cost on each decision (§5) |
+| **Drain** | shrinking | deciding, with a cost on each decision — then doing what you accepted (§5) |
 | **Retire** | empty, then gone | distilling and tearing down (§6) |
+
+Three phases and there is no fourth. The drain is the long one and it has two halves —
+deciding, and then carrying out what was accepted — which §5 says more about, because a
+ledger spends most of its life in the second half and it does not look like triage.
 
 ### Status classes — what "drainable" actually means
 
@@ -562,6 +566,36 @@ nothing has moved since* — is a dismissal reason: terminal, and it owes a dest
 (`null` is fine here; it is `about: item-state`). The same two words point at opposite
 ends of the lifecycle, and a vocabulary that blurs them will blur others.
 
+### The drain has a second half, and it is longer than the first
+
+Everything above is about an entry leaving `untriaged`. That is not the whole phase.
+§2's class table already names the gap: `accepted` is *decided for, work outstanding*, and
+`parked` is *decided to decide later*. Both are decisions, and neither is terminal. So a
+ledger reaches a state where nothing is undecided, nothing is retirable, and no amount of
+triage will move it — because what is left is the work itself.
+
+**This is where a real drain spends most of its calendar time**, and it is a state to
+recognise rather than a corner case: deciding four hundred entries is days, building the
+nine you accepted is months. It is still the drain phase. Nothing new becomes true at the
+boundary and there is no fourth phase; a lifecycle with a phase for "doing the work" would
+be claiming to govern your project's own work, which §1 explicitly does not.
+
+What the phase owes here is different, and it is two things:
+
+- **Close each entry in the commit that does its work**, not in the one after. See §6 —
+  the rule is about what `git log -- <ledger>` leads a future reader to, and it is cheap
+  only if you follow it while the work is happening.
+- **Re-open a decision that did not survive contact with the work.** A `next_action`
+  written six months ago against an abandoned upstream may turn out to be wrong, and
+  reversing it is a normal event (§5's prices are payable in either direction). What is
+  not acceptable is leaving it `accepted` indefinitely, which converts the backlog you
+  inherited into a backlog you own — the failure §8 exists to catch.
+
+Tooling **SHOULD** report the two numbers separately — how many entries are undecided, and
+how many are outstanding — because a single count conflates a triage that has stalled with
+one that is finished deciding and getting on with it. Those need opposite responses, and
+a burn-down that shows one number cannot tell its reader which one it is looking at.
+
 ### Working at volume
 
 - **Bulk transitions are the load-bearing operation.** Dismissing eighty entries for one
@@ -796,6 +830,15 @@ return to `untriaged`, because no rule ever sees two versions of the ledger at o
 merge that undoes a week of triage therefore violates nothing, and the burn-down count
 simply gets smaller. **Monotonicity is a property of your workflow and not of this format**,
 and a validator cannot be asked to supply it.
+
+Say that limit out loud to whoever picks the ledger up, because it is stated here for
+someone who was there. A ledger whose decisions were reverted validates, reports its last
+activity as today, and offers entries that were already dismissed — every instrument
+computed from the file agrees it is a young, healthy triage, and the file holds no record
+of what it used to hold. The reader who most needs to know this is the one who cannot
+supply the missing workflow knowledge from memory: whoever arrives at the ledger without
+having been there. `git log -- <ledger>` is what they have, and tooling **SHOULD** say so
+rather than assuming the reader already knows to look.
 
 That matters because of how the file merges. Triage is additive — deciding an entry appends
 fields inside it, and two such edits in different entries do not interact, so branches that

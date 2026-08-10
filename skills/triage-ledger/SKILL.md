@@ -27,13 +27,54 @@ That reports a `phase`. Read the matching file and work from it:
 | phase | read |
 |---|---|
 | `setup` | [references/setup.md](references/setup.md) — the vocabulary is not written yet |
-| `seed` | [references/seed.md](references/seed.md) — the vocabulary exists, the ledger is empty |
+| `seed` | [references/seed.md](references/seed.md) — the vocabulary exists and nothing has been seeded |
 | `drain` | [references/drain.md](references/drain.md) — entries are outstanding |
-| `retire` | [references/retire.md](references/retire.md) — everything is terminal |
+| `retire` | [references/retire.md](references/retire.md) — nothing is outstanding; distil and tear down |
 
-If the command is not available, the project has adopted the spec without the tooling.
+**If it exits non-zero it has not named a phase, and that is the one case you must not
+route past.** It refuses for exactly two reasons and prints them: an unresolved merge
+conflict, or a ledger that does not validate. Both mean the same thing to you — the file
+in front of you does not yet say what it appears to say, every count computed from it is
+drawn from data the validator rejects, and there is no phase to be in. Fix what it lists,
+`npx triage-ledger@0.1 validate` for the full set, and probe again.
+
+Do not fall through to the paragraph below when this happens. That one is about the tool
+being **absent**, which is a different condition with a different answer, and treating a
+failing probe as a missing one sends you to hand-edit a file you have not yet understood.
+
+The conflict case has one resolution and it is worth having here, because a conflicted
+ledger is one you cannot read the drain reference from:
+
+```sh
+git config merge.conflictStyle zdiff3   # so the merge base is visible
+```
+
+Then resolve **entry by entry** — the union of both sides' decisions *and* the union of
+both sides' deletions. Do not keep both sides wholesale: a conflict boundary falls where
+the text differs, not where an entry ends, so both together can put a trailing field on the
+entry after the one it belongs to and restore every entry the other branch pruned. The
+result usually validates, because an entry back at `untriaged` is a legal entry and nothing
+in the format knows it was ever decided. Count the decisions that came back and say so.
+
+If the command is **not available**, the project has adopted the spec without the tooling.
 That is a supported path, not a broken setup. Read the ledger directly, work out the phase
 from it, and see "When the CLI is not installed" below.
+
+## What the probe cannot tell you
+
+Two things, and both are worth knowing before you act on a phase:
+
+**An empty ledger.** `seed` means nothing was ever seeded here. The probe establishes that
+from the `upstream:` block, which records what one import actually did — so a project that
+seeded from something the file does not describe, a `TODO.md` or a spreadsheet, leaves no
+trace at all once the entries have been pruned. If you are told `seed` and anything else
+suggests this project already drained, `git log -- <ledger>` is the only thing that knows.
+Seeding a second time is the one mistake this phase cannot undo.
+
+**Whether the ledger moved backwards.** Nothing here compares against an earlier version.
+A merge resolved by keeping both sides restores pruned entries and reads afterwards as a
+young, healthy triage — it validates, and the burn-down says activity was today. Where you
+are picking up work somebody else left, `git log -- <ledger>` before you trust the counts.
 
 ## The rules that survive every phase
 

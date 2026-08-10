@@ -309,13 +309,45 @@ export async function commandNext(options, io) {
 	const count = options.args[0] ? Number(options.args[0]) : 10
 	if (!Number.isInteger(count) || count <= 0) throw new Error('next takes a positive integer')
 	const undecided = filterItems(index, options.filters).filter((item) => index.classOfItem(item) === 'untriaged')
-	const batch = undecided.slice(0, count)
+	// Never-opened first. `last_reviewed` on an entry that is still undecided is the file's
+	// only record that somebody read it and did not decide, and a queue that ignores it hands
+	// the next session the top of the file — which is precisely what the last session read and
+	// put down. Stable within each group, so a ledger where nothing has been stamped is served
+	// in file order exactly as before.
+	const queue = [
+		...undecided.filter((item) => typeof item.last_reviewed !== 'string'),
+		...undecided.filter((item) => typeof item.last_reviewed === 'string'),
+	]
+	const batch = queue.slice(0, count)
+	const outstanding = outstandingItems(index)
 	if (options.json) {
-		io.stdout(json({ ledger: options.ledger, remaining: undecided.length, count: batch.length, items: batch }))
+		io.stdout(
+			json({ ledger: options.ledger, remaining: undecided.length, outstanding: outstanding.length, count: batch.length, items: batch })
+		)
 		return 0
 	}
+	// An empty queue used to answer "run `status`", and `status` answers `drain`, and the
+	// drain reference opens by telling its reader to run this command. That is a closed loop,
+	// and a ledger sits in it for as long as its accepted work takes to do — which is to say
+	// for most of the time anyone is holding one, because deciding is fast and building is
+	// not. What is outstanding here is *work*, and naming it is the exit.
 	if (batch.length === 0) {
-		io.stdout('Nothing undecided. Run `triage-ledger status` to see what is left.')
+		if (outstanding.length === 0) {
+			io.stdout('Nothing undecided and nothing outstanding. `triage-ledger retire --check` is the gate.')
+			return 0
+		}
+		const one = outstanding.length === 1
+		const lines = [
+			'Nothing undecided — the deciding is done. ' + outstanding.length + (one ? ' entry' : ' entries') +
+				' still ' + (one ? 'owes' : 'owe') + ' this project something, which is work rather than a decision:',
+			'',
+		]
+		for (const item of outstanding.slice(0, 10)) lines.push('  ' + item.id + '  [' + item.status + ']')
+		if (outstanding.length > 10) lines.push('  … ' + (outstanding.length - 10) + ' more')
+		lines.push('')
+		lines.push('`retire --check` is what tracks those; this queue refills only if something is')
+		lines.push('un-parked or a new entry is added.')
+		io.stdout(lines.join('\n'))
 		return 0
 	}
 	const width = Math.max(...batch.map((item) => item.id.length))
@@ -402,10 +434,59 @@ export async function commandStats(options, io) {
  * The machine-readable phase probe. Distinct from `stats`, which is the human's
  * burn-down: this exists so the agent skill can route itself to the right reference
  * without the skill having to reimplement the lifecycle.
+ *
+ * It names no phase for a ledger that does not validate. That is `retire --check`'s
+ * argument moved one command earlier, and it belongs here more than it belongs there: a
+ * status whose `class` was mistyped makes every entry terminal, so the phase computed from
+ * it is a confident `retire` over a file the validator rejects outright. This is the first
+ * command run and the only one the routing reads, and nothing downstream is obliged to
+ * catch it — the retirement reference opens with a gate that would, but the drain reference
+ * opens with `next`, which computes just as happily from the same wrong classes.
  */
 export async function commandStatus(options, io) {
+	let text
+	try {
+		text = await fs.readFile(options.ledger, 'utf8')
+	} catch (error) {
+		if (error.code === 'ENOENT') {
+			throw new Error('no ledger at ' + options.ledger + ' — run `triage-ledger init`, or pass --ledger <path>')
+		}
+		throw error
+	}
+	const report = validateLedgerText(text).report
+	if (!report.ok) {
+		if (options.json) {
+			io.stdout(
+				json({ ledger: options.ledger, phase: null, valid: false, errorCount: report.errors.length, errors: report.errors })
+			)
+			return 1
+		}
+		// The errors themselves, not a pointer to them. The single most common way to arrive
+		// here is an unresolved merge conflict, and that error carries the marker line numbers
+		// and the warning against keeping both sides — which is the whole of what its reader
+		// needs, and is worth nothing behind a second command.
+		const lines = ['No phase: this ledger does not validate (' + report.errors.length + ' error(s)).']
+		for (const error of report.errors.slice(0, 5)) lines.push('  ✗ ' + error)
+		if (report.errors.length > 5) lines.push('  … ' + (report.errors.length - 5) + ' more')
+		lines.push('')
+		lines.push('Routing on this would be a guess: the phase is computed from a file the validator')
+		lines.push('has just rejected, and nothing downstream is obliged to re-check it. Fix what is')
+		lines.push('listed — `triage-ledger validate` prints them all — then probe again.')
+		io.stdout(lines.join('\n'))
+		return 1
+	}
+
 	const { index } = await loadLedger(options)
 	const stats = computeStats(index)
+
+	// Was anything ever seeded into this file? The `upstream:` block (§3) records what one
+	// specific import actually did, and a `matched` count is the only durable trace of it —
+	// §6 has you prune each entry as it closes, so by the end the entries themselves are gone.
+	// Null where the project declares no upstream at all: a `TODO.md` migration leaves no such
+	// record, and that limit is real and is stated below rather than papered over.
+	const upstream = index.data?.upstream
+	const priorSeed = isMapping(upstream) && Number.isInteger(upstream.matched) ? upstream.matched : null
+
 	// A ledger with entries to decide and no dismissal reasons declared is in `setup`, not
 	// `drain` — whatever order it got there in. Dismissal is the majority operation, and
 	// routing to the drain reference would send a reader to "pick the closest existing
@@ -415,32 +496,64 @@ export async function commandStatus(options, io) {
 	if (stats.outstanding > 0) phase = index.reasons.size === 0 ? 'setup' : 'drain'
 	else if (stats.total > 0) phase = 'retire'
 	else if (index.reasons.size === 0) phase = 'setup'
-	else phase = 'seed'
+	// An empty ledger is `seed` only where nothing was ever seeded into it. Three roads reach
+	// zero entries — never seeded, drained and pruned per §6, and emptied without deciding —
+	// and two of the three are *past* seeding rather than before it. The seed reference opens
+	// by telling its reader to import a pile and three paragraphs later says "seed once, never
+	// reconcile", so sending an already-seeded ledger there routes it straight into that
+	// contradiction. What is left on both of the other roads is the same work — distil what
+	// happened, tear the tooling down — and the retirement commands are the ones that say out
+	// loud that the record has left this file.
+	else phase = priorSeed === null ? 'seed' : 'retire'
 
+	const undecided = stats.byClass.untriaged ?? 0
 	const payload = {
 		ledger: options.ledger,
 		schema: index.data?.schema ?? null,
 		phase,
+		valid: true,
 		...stats,
+		undecided,
 		vocabulary: {
 			statuses: index.statuses.size,
 			non_target_reasons: index.reasons.size,
 			evidence_kinds: index.evidenceKinds.size,
 			fields: index.fields.size,
 		},
+		// Two different questions that read alike. `hasUpstream` is about the *vocabulary* —
+		// does any declared source kind carry external provenance — and is what makes an
+		// `upstream:` block required; it is true of a fork-triage ledger that has never been
+		// seeded. `priorSeed` is about the *history*: how many entries an import actually
+		// brought in, or null where the file has no record either way.
 		hasUpstream: index.hasExternalSource(),
+		priorSeed,
 	}
 	if (options.json) {
 		io.stdout(json(payload))
 		return 0
 	}
-	io.stdout(
-		[
-			'phase: ' + phase,
-			'entries: ' + stats.total + ' (' + stats.outstanding + ' outstanding)',
-			'vocabulary: ' + payload.vocabulary.statuses + ' statuses, ' + payload.vocabulary.non_target_reasons + ' dismissal reasons',
-		].join('\n')
-	)
+	const ledgerPath = path.relative(process.cwd(), options.ledger).split(path.sep).join('/')
+	const lines = [
+		'phase: ' + phase,
+		'entries: ' + stats.total + ' (' + stats.outstanding + ' outstanding, ' + undecided + ' undecided)',
+		'vocabulary: ' + payload.vocabulary.statuses + ' statuses, ' + payload.vocabulary.non_target_reasons + ' dismissal reasons',
+	]
+	if (stats.total === 0 && priorSeed !== null) {
+		lines.push('')
+		lines.push('This ledger is empty and its import record says ' + priorSeed + ' entries arrived. Whether')
+		lines.push('they were decided and pruned or deleted undecided is not written here — only')
+		lines.push('`git log -- ' + ledgerPath + '` knows, and `retire --distil` says the same.')
+	} else if (stats.total === 0 && index.reasons.size > 0) {
+		lines.push('')
+		lines.push('Nothing in this file records an import, so it reads as never seeded. If this project')
+		lines.push('did seed and has since drained, the phase is `retire` and nothing here can tell —')
+		lines.push('a ledger without an `upstream:` block keeps no trace of its own seeding.')
+	} else if (phase === 'drain' && undecided === 0) {
+		lines.push('')
+		lines.push('Nothing is undecided: what is outstanding is work, not decisions. `retire --check`')
+		lines.push('names it, and `next` will stay empty until something is un-parked or added.')
+	}
+	io.stdout(lines.join('\n'))
 	return 0
 }
 

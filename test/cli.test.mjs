@@ -274,6 +274,116 @@ test('the phase probe routes a seeded-but-unvocabularied ledger to setup, not dr
 	})
 })
 
+test('the phase probe names no phase for a ledger that does not validate', async () => {
+	// The same argument `retire --check` makes, one command earlier and with more riding on
+	// it: this is the first command an agent runs and the only one its routing reads. One
+	// mistyped `class` makes every entry terminal, and the phase computed from that is a
+	// confident `retire` over a file the validator rejects outright.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		const text = await fs.readFile('docs/backlog.yml', 'utf8')
+		await fs.writeFile(
+			'docs/backlog.yml',
+			text.replace(/- status: needs-triage(\r?\n\s+)class: untriaged/, '- status: needs-triage$1class: dismissed')
+		)
+
+		const { io, out } = capture()
+		assert.equal(await run(['status'], io), 1)
+		assert.doesNotMatch(out.join('\n'), /phase: retire/)
+		// The errors themselves, because the commonest one — a merge conflict — carries its
+		// own marker lines and is worth nothing behind a second command.
+		assert.match(out.join('\n'), /No phase: this ledger does not validate/)
+		assert.match(out.join('\n'), /requires `last_reviewed`/)
+
+		const asJson = capture()
+		assert.equal(await run(['status', '--json'], asJson.io), 1)
+		const payload = JSON.parse(asJson.out.join('\n'))
+		assert.equal(payload.phase, null)
+		assert.equal(payload.valid, false)
+	})
+})
+
+test('an empty ledger that records an import is retiring, not seeding', async () => {
+	// Three roads reach zero entries and the file distinguishes only one of them. Never
+	// seeded is `seed`; drained-and-pruned and emptied-without-deciding are both past
+	// seeding, and routing them to the seed reference sends them to "import a pile" three
+	// paragraphs above that document's own "seed once, never reconcile".
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(['set-status', 'upstream-issue-1', 'non-target', '--reason', 'stale-no-repro'], capture().io)
+		await run(['set-status', 'upstream-pr-2', 'non-target', '--reason', 'out-of-project-scope'], capture().io)
+		await run(['remove', '--class', 'dismissed'], capture().io)
+
+		const probe = async () => {
+			const { io, out } = capture()
+			await run(['status', '--json'], io)
+			return JSON.parse(out.join('\n'))
+		}
+		const drained = await probe()
+		assert.equal(drained.total, 0)
+		assert.equal(drained.phase, 'retire')
+		assert.equal(drained.priorSeed, 2)
+
+		// And the limit, stated rather than papered over: strip the one record of the import
+		// and nothing left in the file can tell. `hasUpstream` does not answer this — it is
+		// about the vocabulary, and is still true here.
+		const text = await fs.readFile('docs/backlog.yml', 'utf8')
+		await fs.writeFile('docs/backlog.yml', text.replace(/^upstream:\r?\n(?: .*\r?\n)+/m, ''))
+		const traceless = await probe()
+		assert.equal(traceless.phase, 'seed')
+		assert.equal(traceless.priorSeed, null)
+		assert.equal(traceless.hasUpstream, true)
+	})
+})
+
+test('an empty queue names the outstanding work instead of pointing back at the probe', async () => {
+	// `next` answered "run `status`", `status` answered `drain`, and the drain reference
+	// opens by telling its reader to run `next`. A ledger sits in that loop for as long as
+	// its accepted work takes to do, which is most of the time anyone is holding one.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(['set-status', 'upstream-issue-1', 'non-target', '--reason', 'stale-no-repro'], capture().io)
+		await run(
+			['set-status', 'upstream-pr-2', 'accepted', '--evidence', 'source-read', '--local-file', 'src/a.ts',
+				'--next-action', 'port the patch onto the current base'],
+			capture().io
+		)
+
+		const { io, out } = capture()
+		await run(['next'], io)
+		assert.doesNotMatch(out.join('\n'), /triage-ledger status/)
+		assert.match(out.join('\n'), /work rather than a decision/)
+		assert.match(out.join('\n'), /upstream-pr-2\s+\[accepted\]/)
+
+		// And the probe says the same thing rather than reporting a drain with nothing to
+		// drain, so neither end of the loop asserts the other one has work.
+		const probe = capture()
+		await run(['status'], probe.io)
+		assert.match(probe.out.join('\n'), /0 undecided/)
+		assert.match(probe.out.join('\n'), /outstanding is work, not decisions/)
+	})
+})
+
+test('the queue serves never-opened entries before ones somebody already read', async () => {
+	// `last_reviewed` on an entry that is still undecided is the file's only record that
+	// somebody looked and did not decide. A queue in file order hands the next session
+	// exactly what the last one read and put down.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		const order = async () => {
+			const { io, out } = capture()
+			await run(['next', '--json'], io)
+			return JSON.parse(out.join('\n')).items.map((item) => item.id)
+		}
+		assert.deepEqual(await order(), ['upstream-issue-1', 'upstream-pr-2'], 'file order until something is stamped')
+
+		// Re-asserting the status an entry already has is what stamps it, and it is the only
+		// move that records "read, not decided" without claiming a decision.
+		await run(['set-status', 'upstream-issue-1', 'needs-triage'], capture().io)
+		assert.deepEqual(await order(), ['upstream-pr-2', 'upstream-issue-1'])
+	})
+})
+
 test('--dry-run writes nothing', async () => {
 	await inTempDir(async () => {
 		await run(['init'], capture().io)

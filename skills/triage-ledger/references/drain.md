@@ -1,8 +1,11 @@
-# Phase: drain — deciding
+# Phase: drain — deciding, and then doing
 
 Entries are outstanding. Most of them will be dismissed — that is normal, and it is the
 operation to make fast. If dismissal costs a ceremony each, the triage stalls and the file
 rots into false coverage.
+
+**If the probe said `0 undecided`, skip to "If the queue is empty" below.** Almost nothing
+else on this page applies to you: the deciding is finished and what is left is work.
 
 ## Work a queue, not a pile
 
@@ -12,6 +15,33 @@ npx triage-ledger@0.1 next 10
 
 Ten things is a task; four hundred things is a mood. Take a batch, decide all of it, take
 the next.
+
+The queue serves entries nobody has opened before entries somebody already read and left
+undecided, so working from the top does not re-cover the ground the last session covered.
+
+## If the queue is empty and the phase is still `drain`
+
+Read this before anything else on this page, because most of it will not apply to you.
+This phase has two halves and they are different work:
+
+- **Deciding.** Entries leave `untriaged`. Everything below is about this.
+- **Doing.** Entries sit at a class-`accepted` status with a real `next_action`, or at a
+  `parked` one. Both are outstanding, so the ledger is not retirable — and neither is a
+  triage decision waiting to be made.
+
+`next` empty with entries still outstanding means the first half is finished. It will name
+what is left; `retire --check` is the standing list. What those entries need is the work
+itself, done in your project the way any other work is done, and then `set-status` to a
+class-`done` status **in the commit that does the work** — see [retire.md](retire.md), which
+is where that rule and its reason live.
+
+The one thing worth checking here rather than later: a decision made months ago may not
+survive contact with the work. Changing it is a normal event and it is one command; see
+"Changing a decision is normal" below. What is not acceptable is quietly leaving it
+accepted forever, which is how a ledger becomes a differently-coloured backlog.
+
+Parked entries are the other half of what is left, and they are the ones `retire --check`
+will eventually force a question about. Do not un-park them to shorten the list.
 
 ## For each entry, one of four moves
 
@@ -37,6 +67,28 @@ Park when you genuinely intend to come back, not when you want the queue shorter
 number, three words, a stack trace. Rewriting one is a triage act, not tampering: `source`
 is the provenance field and nothing is lost. Until those are done the ledger is not yet
 readable offline, which is a promise it has to keep.
+
+## Read it and did not decide — record that, it is not a park
+
+The fifth thing that happens and is not one of the four. You open an entry, it is not
+obvious, and you are out of time. Park is the wrong answer: parking says *we intend to come
+back to this specific thing*, and it holds retirement open forever on the strength of that
+promise. "I have not worked out what this is yet" is not that promise.
+
+Re-assert the status the entry already has:
+
+```sh
+npx triage-ledger@0.1 set-status <id> <the status it already has>
+```
+
+That stamps `last_reviewed` and changes nothing else. On an entry still at `untriaged` it
+is the only thing in the file that says *somebody looked at this one* — and it is what
+moves the entry to the back of the queue, so the next session reads what has not been read
+instead of starting again at the top. It also counts as triage activity, which is correct:
+reading forty entries and deciding none of them is a session that happened.
+
+Without it the next reader cannot tell a hard entry from an untouched one, and there is
+nothing else in the format that carries the difference.
 
 ## "Something else covered it"
 
@@ -122,20 +174,22 @@ the commit is all there is.
 
 ## If the ledger has been touched on another branch
 
-`validate` refusing with **unresolved merge conflict** means exactly that, and it is the
-first thing to fix — nothing can read the file until you do.
+The resolution is in the main skill file, under the phase probe — deliberately, because a
+conflicted ledger is one you cannot reach this page from: `status` refuses to name a phase
+until the markers are gone, so anything written here arrives too late to be read. The short
+of it: never keep both sides, resolve entry by entry, count the decisions that came back.
 
-Do not resolve it by keeping both sides. The conflict boundary falls where the text
-differs, not where an entry ends, so both sides together can put a trailing field on the
-entry *after* the one it belongs to and bring back every entry the other branch pruned. The
-result usually validates: an entry restored to `needs-triage` is a legal entry, and nothing
-in the format knows it was ever decided. Run `git config merge.conflictStyle zdiff3` so the
-merge base is visible, then resolve entry by entry — the union of both sides' decisions and
-the union of both sides' deletions. Report the reversal count to the human if there was one;
-it is not something they can see in a passing build.
+Two things that belong here rather than there:
 
-If you are the one on a branch: decide freely, and leave pruning to the shared branch.
+**If you are the one on a branch: decide freely, and leave pruning to the shared branch.**
 Deciding entries merges cleanly. Removing them is what conflicts.
+
+**A merge that resolved cleanly is not thereby correct.** A ledger whose decisions were
+reverted validates, reports today's date as its last activity, and offers you entries in
+`next` that were already dismissed — every instrument in this tool agrees it is a young,
+healthy triage. Nothing in the file records what it used to hold. If you are picking up
+somebody else's work, read `git log -- <ledger>` before you trust the burn-down; it is the
+only reader of this format that can see backwards, and the format says so on purpose.
 
 ## When it is done
 

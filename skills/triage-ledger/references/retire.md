@@ -3,6 +3,24 @@
 Nothing is outstanding. Now the ledger gets deleted, and so does the tooling. This is the
 reason the format exists; do not stop at "the queue is empty".
 
+## If the ledger is already empty
+
+You reached this page with `items: []` and a record that something was once imported. Two
+different things produce that file and it is the same file either way: a triage that
+decided everything and pruned as it went, per step 4 below — and a backlog that was deleted
+without being decided, which leaves a ledger that validates, owes nothing, and passes every
+check on this page for a project that decided nothing.
+
+Nothing in the file tells you which. `git log -- <ledger>` does, and it is the only thing
+that does; both `retire --distil` and `retire --summary` will say so in their own output
+when they find nothing to draw on. Read the history before you write anything, because
+steps 2 and 3 are the record this project leaves behind and you cannot write them from an
+empty file.
+
+If it turns out the entries were deleted undecided, say that plainly to the person you are
+working for. It is recoverable — the history has every entry — and it is much worse
+discovered later, once the summary claiming a completed triage is in their docs.
+
 ## 1. Check
 
 ```sh

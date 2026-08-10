@@ -4,6 +4,28 @@ The vocabulary is written and the ledger is empty. Three ways in: start empty an
 things arrive, bulk-import from an issue tracker, or migrate an existing pile (a `TODO.md`,
 an export, a spreadsheet).
 
+## First: is it empty, or is it finished?
+
+An empty ledger is the state this phase begins from and also the state a successful triage
+*ends* in — §6 has you prune each entry as it closes, so a project that drained everything
+it inherited leaves a file that looks exactly like one nobody has started. The probe
+separates them where it can, from the `upstream:` block's record of what an import actually
+brought in, and routes an already-seeded ledger to [retire.md](retire.md) instead of here.
+
+Where it cannot, it says so, and you are the check. A ledger seeded from something the file
+does not describe — a `TODO.md`, an export, a spreadsheet — keeps no record of its own
+import, so nothing in it distinguishes never-started from finished. Before you import
+anything:
+
+```sh
+git log -- <ledger>
+```
+
+An empty history is a ledger that has never held entries. Anything else is a triage that
+already happened, and you are in retirement, not seeding — go and read what it decided
+before you consider putting the pile back. This matters more than it sounds, because the
+rule below makes it the one mistake this phase cannot take back.
+
 ## The rules that make seeding safe
 
 **Seed once. Never reconcile.** Nothing goes back and re-reads the source. A live sync
