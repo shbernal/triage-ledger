@@ -670,6 +670,36 @@ test('the retirement summary attributes to the upstream only what came from it',
 	})
 })
 
+test('--distil hands over the clause the destination owes, instead of only naming the debt', async () => {
+	// A drained security ledger was distilled with this command: it printed "owes a line per
+	// entry" over nine entries whose conclusions were sitting in `evidence.spec_refs` in the
+	// same file, printed the id and the summary, and printed neither. §3 gives the per-entry
+	// conclusion no slot of its own, so that is where it goes and this is the one command
+	// that has to look there.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(
+			['set-status', 'upstream-issue-1', 'non-target', '--reason', 'not-reproducible', '--evidence', 'repro',
+				'--spec-ref', 'ran it on 22 and 24; the reporter was on a fork'],
+			capture().io
+		)
+		const owed = capture()
+		assert.equal(await run(['retire', '--distil'], owed.io), 0)
+		assert.match(owed.out.join('\n'), /ran it on 22 and 24; the reporter was on a fork/)
+
+		// Not under a reason that owes one sentence. Those entries evaporate into git history
+		// and their references would bury the single durable statement that replaces them.
+		await run(
+			['set-status', 'upstream-pr-2', 'non-target', '--reason', 'superseded-upstream', '--evidence', 'upstream-read',
+				'--spec-ref', 'a reference on an entry whose reason settles it'],
+			capture().io
+		)
+		const mixed = capture()
+		assert.equal(await run(['retire', '--distil'], mixed.io), 0)
+		assert.doesNotMatch(mixed.out.join('\n'), /an entry whose reason settles it/)
+	})
+})
+
 test('--set writes a list only when it is asked to, and refuses to guess', () => {
 	// §7 lets an entry's value be a list and requires every element to be declared. There
 	// was no way to write one: the CLI set the whole string, the validator refused it as an

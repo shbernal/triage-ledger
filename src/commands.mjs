@@ -957,7 +957,18 @@ function distil(index) {
 			requires_evidence: demands,
 			owes: demands.length > 0 ? 'a line per entry' : 'one sentence',
 			count: items.length,
-			items: items.map((item) => ({ id: item.id, summary: item.summary })),
+			// The clause a per-entry destination owes is usually already in the file, and §3
+			// gives it no slot of its own, so it goes into `spec_refs` — that is where nine of
+			// the eleven clauses sat in the one drained ledger this was measured against. The
+			// command printed the obligation, printed the id and the summary, and withheld the
+			// answer from the same file; the person distilling then retyped it from memory.
+			items: items.map((item) => ({
+				id: item.id,
+				summary: item.summary,
+				spec_refs: isMapping(item.evidence) && Array.isArray(item.evidence.spec_refs)
+					? item.evidence.spec_refs.filter((ref) => typeof ref === 'string' && ref.trim() !== '')
+					: [],
+			})),
 		}
 	})
 }
@@ -1096,7 +1107,13 @@ export async function commandRetire(options, io) {
 					'   owes ' + group.owes + (group.requires_evidence.length > 0 ? ' (requires evidence: ' + group.requires_evidence.join(', ') + ')' : '')
 			)
 			if (group.describes) lines.push('   ' + String(group.describes).trim().replace(/\s*\n\s*/g, ' '))
-			for (const item of group.items) lines.push('     ' + item.id + '  ' + (item.summary ?? ''))
+			// Under a per-entry group only. Where the destination owes one sentence for the whole
+			// reason, the references belong to entries that are about to evaporate and printing
+			// them buries the one sentence under the pile it replaces.
+			for (const item of group.items) {
+				lines.push('     ' + item.id + '  ' + (item.summary ?? ''))
+				if (group.owes === 'a line per entry') for (const ref of item.spec_refs) lines.push('       ' + ref)
+			}
 			lines.push('')
 		}
 		io.stdout(lines.join('\n'))
