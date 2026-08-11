@@ -27,16 +27,28 @@ export { missingRetireDestinations, outstandingItems, validateLedgerData, valida
 
 export {
 	addLedgerItemText,
+	addLedgerItemsText,
+	declareFieldValuesText,
 	dominantLineEnding,
 	findItemBlocks,
 	findUniqueBlock,
 	removeLedgerItemText,
 	renderItemBlock,
 	setLedgerItemStatusText,
+	setUpstreamBlockText,
 	updateLedgerItemText,
 	yamlScalar,
 	yamlSummary,
 } from './surgery.mjs'
+
+export {
+	buildRecordFields,
+	expandTemplate,
+	normalizeText,
+	parseRecords,
+	pendingFieldValues,
+	resolvePath,
+} from './import.mjs'
 
 export { filterItems, hasFilters } from './commands.mjs'
 

@@ -12,7 +12,8 @@ npx skills add shbernal/triage-ledger --skill triage-ledger    # optional
 
 1. **Write the vocabulary.** What this project will and will not carry, with a `retire_to`
    destination declared for every dismissal reason.
-2. **Seed it.** Start empty and `add` as things arrive, or migrate an existing pile.
+2. **Seed it.** Start empty and `add` as things arrive, or `import` a pile you already have
+   — a `gh issue list --json` export, a `TODO.md` you turned into JSONL, a spreadsheet.
 3. **Drain it.** `next`, `set-status`, `stats`, until nothing is outstanding.
 4. **Implement what survived.** Close each entry in the *same* commit as the work — run
    `set-status` before you commit — and prune it in a *later* one.
@@ -220,7 +221,9 @@ which is the exact confusion the ledger existed to remove.
 Three things in the design push against it, and they only work if you let them:
 
 - **Seed a subset on purpose.** Filter, and record the exact predicate. A silent subset is
-  its own kind of false coverage.
+  its own kind of false coverage. `import` will not write an `upstream:` block without
+  `--filter` and `--total-open`, because a seed that cannot say how much it left behind is
+  claiming the coverage it skipped.
 - **Watch `stats`, especially days-since-last-activity.** A stalled triage is silent.
 - **Keep dismissal cheap.** Bulk transitions exist because dismissal is the majority
   operation; if it costs a command each, the triage stalls.
@@ -244,8 +247,8 @@ What catches it is not the validator, and knowing that is the point of this sect
   finding rather than the absence of one. Run it before you delete anything, and read it.
 - **The `upstream:` block is the denominator.** Without it, nothing in the file records how
   many entries ever arrived, and a ledger that was emptied is indistinguishable from one
-  that was small. Fill it in at seeding time; that is what makes the summary's counts
-  checkable later.
+  that was small. `import` writes it, and a hand-seeded ledger owes it anyway; either way it
+  is filled in at seeding time, which is what makes the summary's counts checkable later.
 - **The diff and the commit message.** Removals are the one operation this format prices at
   nothing, because removal is what retirement is made of. Naming removed ids in the prune
   commit is what leaves a trail.

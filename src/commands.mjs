@@ -14,7 +14,15 @@ import { fileURLToPath } from 'node:url'
 import { CLASSES, TERMINAL_CLASSES, VOCABULARY_LISTS } from './model.mjs'
 import { indexLedger, isMapping, readLedgerText, todayIsoDate } from './ledger.mjs'
 import { missingRetireDestinations, outstandingItems, validateLedgerText } from './validate.mjs'
-import { addLedgerItemText, removeLedgerItemText, setLedgerItemStatusText } from './surgery.mjs'
+import {
+	addLedgerItemText,
+	addLedgerItemsText,
+	declareFieldValuesText,
+	removeLedgerItemText,
+	setLedgerItemStatusText,
+	setUpstreamBlockText,
+} from './surgery.mjs'
+import { buildRecordFields, fatalUnresolved, parseRecords, pendingFieldValues, readRecordSource } from './import.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TEMPLATES = path.join(HERE, '..', 'templates')
@@ -575,6 +583,238 @@ export async function commandAdd(options, io) {
 	// same silent-and-plausible failure as the `--summary` collision.
 	const updated = addLedgerItemText(text, { ...options.fields, ...options.set }, options.today)
 	await write(options, io, updated, (options.dryRun ? 'add ' : 'Added ') + options.fields.id)
+	return 0
+}
+
+// ---------------------------------------------------------------------------- import
+
+/** Does an entry of this type carry provenance from outside the repository? (§3) */
+function isExternalType(index, type) {
+	return typeof index.sourceKinds.get(type)?.source_pattern === 'string'
+}
+
+function describeUnresolved(blocked, label) {
+	const one = blocked.length === 1
+	const lines = [
+		blocked.length + (one ? ' record in ' : ' of the records in ') + label +
+			(one ? ' does' : ' do') + ' not resolve a field an entry cannot be written without:',
+	]
+	for (const entry of blocked.slice(0, 8)) {
+		const missing = fatalUnresolved(entry.unresolved)
+			.map((gap) => gap.field + ' ← {' + gap.path + '}')
+			.join(', ')
+		lines.push('  record ' + entry.position + ': ' + missing)
+	}
+	if (blocked.length > 8) lines.push('  … ' + (blocked.length - 8) + ' more')
+	lines.push('Either the export is missing a key or the --map path names one it does not have.')
+	lines.push('Nothing was written: a mapping wrong for these is suspect for the ones it did resolve.')
+	return lines.join('\n')
+}
+
+/**
+ * Work out the `upstream:` block this import owes, or `null` if it owes none.
+ *
+ * §3 decides both halves. The block is required once *entries* carry external provenance,
+ * which is read off `source_kinds`, so the general path — a `TODO.md` migrated into local
+ * kinds — is not asked for a repository it does not have. And the block describes **one**
+ * import, so a second one against a different filter has nowhere true to be recorded and is
+ * refused rather than silently overwriting the first.
+ */
+function planUpstream(options, index, isExternalImport) {
+	const existing = isMapping(index.data?.upstream) ? index.data.upstream : null
+	const given = options.repo !== null || options.filter !== null || options.totalOpen !== null
+
+	if (!isExternalImport) {
+		// Accepting and ignoring them would be the worst of the three options: the flags say
+		// something about provenance, and a run that took them and wrote nothing would leave a
+		// seeder believing the block exists.
+		if (given) {
+			throw new Error(
+				'--repo, --filter and --total-open describe an import from outside this repository, and no\n' +
+					'entry here has a type that declares a `source_pattern` — this is a local pile, so §3 asks\n' +
+					'for no `upstream:` block. Drop the flags, or seed these under an external kind.'
+			)
+		}
+		return null
+	}
+
+	if (!given) {
+		// A resume: same export, same filter, and the counts already describe the import.
+		if (existing) return null
+		throw new Error(
+			'these entries carry provenance from outside this repository, so §3 requires an `upstream:` block.\n' +
+				'Pass --repo <owner/repo> and --filter <the exact predicate you ran, or `none`>, plus\n' +
+				'--total-open <n> so the block can say how much of the pile was left behind.'
+		)
+	}
+	if (options.repo === null || options.filter === null) {
+		throw new Error('--repo and --filter are both required to write an `upstream:` block')
+	}
+	if (existing) {
+		for (const [key, value] of [['repo', options.repo], ['filter', options.filter]]) {
+			if (existing[key] !== value) {
+				throw new Error(
+					'this ledger already records an import with ' + key + ': ' + JSON.stringify(existing[key]) + ', and you ' +
+						'passed ' + JSON.stringify(value) + '.\nThe `upstream:` block describes one import (§3) — a second one ' +
+						'against a different ' + key + ' has nowhere true to be recorded.\nSeed once, never reconcile (§4).'
+				)
+			}
+		}
+	}
+
+	const matched = options.matched
+	// `none` is the explicit choice §4 asks for, and it is the one case where the tool can
+	// derive what it otherwise has no way to see: taking everything means nothing was left.
+	const totalOpen = options.totalOpen ?? (options.filter === 'none' ? matched : null)
+	if (totalOpen === null) {
+		throw new Error(
+			'--total-open <n> is required alongside a filter: `matched` and `skipped` are what the retirement\n' +
+				'summary is written from, and a filtered seed that cannot say how much it left behind implies\n' +
+				'coverage it does not have (§3, §4). Pass --filter none if you really took the whole pile.'
+		)
+	}
+	if (totalOpen < matched) {
+		throw new Error('--total-open is ' + totalOpen + ', below the ' + matched + ' records read — one of the two is wrong')
+	}
+	return {
+		repo: options.repo,
+		imported_at: existing?.imported_at ?? options.today,
+		filter: options.filter,
+		matched,
+		skipped: totalOpen - matched,
+		total_open: totalOpen,
+	}
+}
+
+function describePending(pending) {
+	const lines = ['refusing: these values would land in vocabulary-constrained fields undeclared.']
+	for (const [field, values] of pending) {
+		lines.push('  ' + field + ' (' + values.length + '): ' + values.join(', '))
+	}
+	lines.push('')
+	lines.push('§3 makes an undeclared value an error rather than a new value, and §4 requires a seed')
+	lines.push('carrying values across to declare them in the same write that first uses them. Re-run')
+	lines.push('with --declare to write them into the vocabulary alongside the entries, or map the')
+	lines.push('field to something already declared.')
+	return lines.join('\n')
+}
+
+/**
+ * Bulk-seed from records somebody else fetched. §4's import and migrate modes, one command.
+ *
+ * The order of the three writes is not arbitrary and each one validates: values are declared
+ * before the entries that use them, and the `upstream:` block is written before the entries
+ * that make it required. Every intermediate state is a legal ledger, which is what lets the
+ * surgery keep its own invariant instead of this function suspending it.
+ */
+export async function commandImport(options, io) {
+	const source = options.args[0]
+	if (!source) throw new Error('import takes a file of records, or `-` to read them from stdin')
+	if (options.map.length === 0) {
+		throw new Error('import needs at least one --map, e.g. --map id=upstream-issue-{number} --map summary={title}')
+	}
+
+	const { text, index } = await loadLedger(options)
+	const label = source === '-' ? 'stdin' : source
+	const records = parseRecords(await readRecordSource(source), label)
+	if (records.length === 0) throw new Error(label + ' holds no records')
+
+	const constants = {}
+	for (const [field, value] of Object.entries({ ...options.fields, ...options.set })) {
+		if (value !== undefined && value !== null && value !== '') constants[field] = value
+	}
+
+	// Checked here rather than left to the entry builder, because at four hundred records the
+	// difference between "an entry needs --status" and "you did not map or fix `status`" is
+	// the difference between one edit and reading the whole command back looking for a typo.
+	const supplied = new Set([...options.map.map((mapping) => mapping.field), ...Object.keys(constants)])
+	const missing = ['id', 'source', 'type', 'summary', 'status'].filter((field) => !supplied.has(field))
+	if (missing.length > 0) {
+		throw new Error(
+			'nothing supplies ' + missing.join(', ') + ' — every entry needs all five.\n' +
+				'Give each one a --map field={path} to read it per record, or a constant: --type, --status,\n' +
+				'--source, or --set field=value for one your project declared.'
+		)
+	}
+
+	const built = records.map((record, position) => ({
+		position: position + 1,
+		...buildRecordFields(record, options.map, constants),
+	}))
+	const blocked = built.filter((entry) => fatalUnresolved(entry.unresolved).length > 0)
+	if (blocked.length > 0) throw new Error(describeUnresolved(blocked, label))
+
+	// Resumability, and the whole of it: §4 requires a re-run to skip ids already present and
+	// to leave an entry whose status has moved alone. Appending only what is absent does both,
+	// and it is why an interrupted seed is finished by running the same command again.
+	const present = new Set(index.items.map((item) => item.id))
+	const fresh = built.filter((entry) => !present.has(entry.fields.id))
+	const entries = fresh.map((entry) => entry.fields)
+
+	// Over every record read, not only the ones still to be written. A resume runs the same
+	// command against the same export, so by the last pass nothing is new — and deciding
+	// "does this import concern external entries" from what is left would make the upstream
+	// flags silently stop applying at exactly the moment the seed finished.
+	const isExternalImport = built.some((entry) => isExternalType(index, entry.fields.type))
+	const upstream = planUpstream({ ...options, matched: records.length }, index, isExternalImport)
+	const pending = pendingFieldValues(index, entries)
+	if (pending.size > 0 && !options.declare) throw new Error(describePending(pending))
+
+	let updated = text
+	const note = 'on ' + options.today + ' — carried across by the seed from ' + label + ' (SPEC.md §4).'
+	if (options.declare) {
+		for (const [field, values] of pending) updated = declareFieldValuesText(updated, field, values, note)
+	}
+	if (upstream) updated = setUpstreamBlockText(updated, upstream)
+	updated = addLedgerItemsText(updated, entries, options.today)
+
+	// What was left off, and why — §4 asks a seed to print this rather than imply coverage it
+	// does not have. Two different silences: entries already in the file, and optional fields
+	// no record carried, which §3 says to omit rather than write empty.
+	const omitted = new Map()
+	for (const entry of fresh) {
+		for (const one of entry.unresolved) omitted.set(one.field, (omitted.get(one.field) ?? 0) + 1)
+	}
+
+	if (options.json) {
+		io.stdout(
+			json({
+				ledger: options.ledger,
+				source: label,
+				read: records.length,
+				written: entries.length,
+				already_present: built.length - fresh.length,
+				declared: Object.fromEntries([...pending].map(([field, values]) => [field, values])),
+				upstream,
+				omitted_fields: Object.fromEntries(omitted),
+				wrote: !options.dryRun,
+			})
+		)
+		if (!options.dryRun) await fs.writeFile(options.ledger, updated)
+		return 0
+	}
+
+	const noun = entries.length === 1 ? ' entry from ' : ' entries from '
+	await write(options, io, updated, (options.dryRun ? 'import ' : 'Imported ') + entries.length + noun + label)
+	const skipped = built.length - fresh.length
+	if (skipped > 0) io.stdout('Skipped ' + skipped + ' already in the ledger; nothing already triaged was touched.')
+	for (const [field, count] of omitted) {
+		io.stdout('No `' + field + '` on ' + count + ' of them — the field is omitted there rather than written empty.')
+	}
+	if (options.declare && pending.size > 0) {
+		for (const [field, values] of pending) io.stdout('Declared ' + values.length + ' new values in `' + field + '`.')
+	}
+	if (upstream) {
+		io.stdout(
+			'upstream: ' + upstream.matched + ' matched, ' + upstream.skipped + ' skipped of ' + upstream.total_open + ' — ' +
+				'the retirement summary is written from these.'
+		)
+	}
+	if (entries.length > 0 && !options.dryRun) {
+		io.stdout('')
+		io.stdout('Freshly seeded is not yet offline-readable: some summaries will be unreadable alone.')
+		io.stdout('Rewriting one is a triage act with a date attached, so do it as you reach them (§4).')
+	}
 	return 0
 }
 

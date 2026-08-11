@@ -25,6 +25,7 @@ import { DEFAULT_LEDGER_PATH } from './model.mjs'
 import { todayIsoDate } from './ledger.mjs'
 import {
 	commandAdd,
+	commandImport,
 	commandInit,
 	commandList,
 	commandNext,
@@ -47,6 +48,7 @@ const COMMANDS = {
 	next: commandNext,
 	stats: commandStats,
 	status: commandStatus,
+	import: commandImport,
 	add: commandAdd,
 	'set-status': commandSetStatus,
 	remove: commandRemove,
@@ -61,6 +63,11 @@ Usage: npx triage-ledger@0.1 <command> [options]
 Setting up
   init                        Write a ledger with a vocabulary skeleton (--profile fork-triage)
   validate                    Check the ledger against the spec. Wire this into CI.
+
+Seeding
+  import <file>               Bulk-seed from a JSON array or JSONL of records ('-' for stdin).
+                              Does not fetch: run your own \`gh issue list --json …\` first.
+                              Re-running skips ids already present and touches nothing triaged.
 
 Reading
   list                        Compact rows for matching entries
@@ -87,6 +94,19 @@ Options
   --json                      Machine-readable output on every read command
   --dry-run                   Validate a mutation without writing
   --print-limit <n>           Rows to print; 0 prints all (default 50)
+
+Mapping records (import) — constants come from --type, --status and --set
+  --map field={path}          Take this field from each record. {path} reads a key, and
+                              may be dotted (author.login). Mix it with literal text to
+                              build a value: --map id=upstream-issue-{number}
+  --map field[]={a[].b}       A list-valued field, one element per array element:
+                              --map "tags[]={labels[].name}". Exactly one {path}, no text.
+  --declare                   Write values landing in a constrained field into the
+                              vocabulary in the same write. Without it, import refuses
+                              and prints them. Never invents a type or a status.
+  --repo <owner/repo>         upstream.repo — required once entries carry external provenance
+  --filter <predicate>        upstream.filter — the exact predicate you ran, or \`none\`
+  --total-open <n>            The size of the unfiltered pile, so \`skipped\` can be true
 
 Filters (list, show, values, next, set-status --to, remove)
   --status <v[,v…]>           By status name
@@ -124,6 +144,10 @@ A value that begins with a dash must use the --flag=value form.
 
 Examples
   npx triage-ledger@0.1 init --profile fork-triage
+  gh issue list --state open --limit 400 --json number,title,url,labels > issues.json
+  npx triage-ledger@0.1 import issues.json --type issue --status needs-triage \\
+    --map id=upstream-issue-{number} --map "source={url}" --map "summary={title}" \\
+    --repo acme/renderer --filter 'updated:>2023-08-08' --total-open 1051
   npx triage-ledger@0.1 next 10
   npx triage-ledger@0.1 values non_target_reasons
   npx triage-ledger@0.1 set-status upstream-issue-412 accepted
@@ -160,6 +184,10 @@ const VALUE_FLAGS = new Set([
 	'--spec-ref',
 	'--result',
 	'--set',
+	'--map',
+	'--repo',
+	'--filter',
+	'--total-open',
 ])
 
 /**
@@ -213,6 +241,11 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 		fields: {},
 		evidence: {},
 		set: {},
+		map: [],
+		declare: false,
+		repo: null,
+		filter: null,
+		totalOpen: null,
 		to: null,
 		reasons: null,
 		retireMode: null,
@@ -235,6 +268,9 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 			i += 1
 		} else if (arg === '--dry-run') {
 			options.dryRun = true
+			i += 1
+		} else if (arg === '--declare') {
+			options.declare = true
 			i += 1
 		} else if (arg === '--check' || arg === '--distil' || (isRetire && arg === '--summary')) {
 			options.retireMode = arg.slice(2)
@@ -304,6 +340,33 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 				case '--result':
 					options.evidence.result = value
 					break
+				case '--repo':
+					options.repo = value
+					break
+				case '--filter':
+					options.filter = value
+					break
+				case '--total-open': {
+					if (!/^\d+$/.test(value)) throw new Error('--total-open must be a non-negative integer')
+					options.totalOpen = Number(value)
+					break
+				}
+				case '--map': {
+					// Same shape as `--set`, and deliberately: `field=` writes a scalar, `field[]=`
+					// writes one element of a list. Two spellings for one idea is how a vocabulary
+					// rots and the argument holds for a CLI, so a reader who has met one has met both.
+					const split = value.indexOf('=')
+					if (split < 0) throw new Error('--map takes field={path}, or field[]={path} for a list-valued field')
+					const rawField = value.slice(0, split)
+					const isList = rawField.endsWith('[]')
+					const field = isList ? rawField.slice(0, -2) : rawField
+					if (field === '') throw new Error('--map takes field={path}, or field[]={path} for a list-valued field')
+					if (options.map.some((mapping) => mapping.field === field)) {
+						throw new Error('--map ' + field + ' given more than once — one field is read from one place')
+					}
+					options.map.push({ field, isList, template: value.slice(split + 1) })
+					break
+				}
 				case '--set': {
 					// `--set field=value` covers every field a project declared for itself.
 					// The alternative was a flag per field, which the CLI cannot know.
@@ -352,7 +415,7 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 	//
 	// The cost is real and worth stating: on `set-status` you cannot filter by the reason
 	// an entry already carries. Filter with --status, --class or --search instead.
-	if (options.command === 'add') {
+	if (options.command === 'add' || options.command === 'import') {
 		options.fields.status = options.filters.status?.[0]
 		options.filters = {}
 	}

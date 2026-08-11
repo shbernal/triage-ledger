@@ -429,16 +429,186 @@ function buildItemSkeleton(fields, today) {
 }
 
 export function addLedgerItemText(text, fields, today = todayIsoDate()) {
+	return addLedgerItemsText(text, [fields], today)
+}
+
+/**
+ * Append many entries in one write, validating the result once.
+ *
+ * Not a convenience wrapper around the single add, and the difference is why `import`
+ * exists at all. Appending one at a time validates the whole file twice per entry, over a
+ * file that is growing under it — quadratic on the one operation this format sizes itself
+ * around. Measured at 400 entries: 75ms in one batch, 13.4s one at a time.
+ *
+ * Validating once is also the more honest guarantee. A per-entry loop that fails at entry
+ * 200 has already written 199, which is a half-seeded ledger produced by a command that
+ * reported failure; here the batch is rejected whole and nothing reaches disk. Resumability
+ * (§4) is not weakened by that, because it is built on ids already present rather than on
+ * partial writes: re-running skips what is there and never touches an entry whose status
+ * has moved, which is a property of appending and of nothing else this function does.
+ */
+export function addLedgerItemsText(text, fieldsList, today = todayIsoDate()) {
 	assertValidBeforeMutation(text)
-	const item = buildItemSkeleton(fields, today)
+	if (fieldsList.length === 0) return text
+	const items = fieldsList.map((fields) => buildItemSkeleton(fields, today))
 	const { blocks } = findItemBlocks(text)
-	if (blocks.some((block) => block.item?.id === item.id)) throw new Error('ledger entry id already exists: ' + item.id)
+
+	const present = new Set(blocks.map((block) => block.item?.id))
+	const batch = new Set()
+	for (const item of items) {
+		if (present.has(item.id)) throw new Error('ledger entry id already exists: ' + item.id)
+		// Two records mapping to one id is a mapping mistake — `{number}` where the source
+		// numbers per repository, say — and it would otherwise land as a duplicate id that
+		// only the validator notices, after the write, naming neither record.
+		if (batch.has(item.id)) throw new Error('two records in this batch produce the same id: ' + item.id)
+		batch.add(item.id)
+	}
 
 	const eol = dominantLineEnding(text)
-	const block = renderItemBlock(item, eol)
+	const rendered = items.map((item) => renderItemBlock(item, eol)).join('')
 	const base = text.endsWith('\n') ? text : text + eol
 	const updated =
-		blocks.length === 0 ? base.replace(/^items:[^\S\r\n]*(?:\[\])?[^\S\r\n]*$/m, 'items:') + block : base + block
+		blocks.length === 0 ? base.replace(/^items:[^\S\r\n]*(?:\[\])?[^\S\r\n]*$/m, 'items:') + rendered : base + rendered
+	assertValidAfterMutation(updated)
+	return updated
+}
+
+// ------------------------------------------------------------------ root and vocabulary
+
+function escapeRegExp(text) {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/**
+ * Lines belonging to a block opened at `start`, i.e. everything indented past `indent`.
+ *
+ * Trailing blank lines are given back rather than swallowed. A blank line before the next
+ * key is a separator that belongs to the file's layout, not to the block above it, and a
+ * rewrite that eats it reflows the document every time it runs.
+ */
+function blockRange(lines, start, indent) {
+	const closes = new RegExp('^ {0,' + indent + '}\\S')
+	let end = start + 1
+	while (end < lines.length && !closes.test(lineContent(lines[end]))) end += 1
+	while (end > start + 1 && lineContent(lines[end - 1]).trim() === '') end -= 1
+	return end
+}
+
+/**
+ * Write the root `upstream:` block, replacing one that is already there.
+ *
+ * §3 requires this block once entries carry external provenance, and requires `filter` to be
+ * the exact predicate rather than a description of it. It is written by seeding rather than
+ * by `init` because it records what one specific import actually did — which is also why
+ * replacing it is a narrow operation: the block describes *one* import, and the counts are
+ * the only part a resumed run may honestly move.
+ *
+ * Comments inside the block are carried across rather than replaced. They are the one thing
+ * in it a person wrote.
+ */
+export function setUpstreamBlockText(text, upstream) {
+	assertValidBeforeMutation(text)
+	const eol = dominantLineEnding(text)
+	const lines = splitLines(text)
+	const rendered = [
+		'upstream:' + eol,
+		'  repo: ' + yamlScalar(upstream.repo) + eol,
+		'  imported_at: ' + yamlScalar(upstream.imported_at) + eol,
+		// Quoted always, for the reason `summary` is: a filter is free text, and a plain
+		// scalar that looks like a number or a date comes back as one (§3).
+		'  filter: ' + yamlSummary(upstream.filter) + eol,
+		'  matched: ' + String(upstream.matched) + eol,
+		'  skipped: ' + String(upstream.skipped) + eol,
+		'  total_open: ' + String(upstream.total_open) + eol,
+	]
+
+	const start = lines.findIndex((line) => /^upstream:\s*(?:#.*)?$/.test(lineContent(line)))
+	if (start >= 0) {
+		const end = blockRange(lines, start, 0)
+		const comments = []
+		for (let i = start + 1; i < end; i += 1) if (/^\s*#/.test(lineContent(lines[i]))) comments.push(lines[i])
+		lines.splice(start, end - start, rendered[0], ...comments, ...rendered.slice(1))
+	} else {
+		// §3's root shape puts `upstream:` between `source_kinds:` and `vocabulary:`. Anchoring
+		// on the following key rather than the preceding one keeps the placement right for a
+		// ledger whose `source_kinds:` block ends in a comment.
+		const anchor = lines.findIndex((line) => /^(?:vocabulary|items):/.test(lineContent(line)))
+		if (anchor < 0) throw new Error('cannot place `upstream:`: the ledger has no `vocabulary:` or `items:` line')
+		lines.splice(anchor, 0, ...rendered, eol)
+	}
+
+	const updated = lines.join('')
+	assertValidAfterMutation(updated)
+	return updated
+}
+
+/** Inline while it stays readable; a seed carrying two dozen labels does not. */
+const INLINE_VALUES_LIMIT = 100
+
+function renderValues(values, indent, eol, trailingComment) {
+	const inline = indent + 'values: [' + values.map((value) => yamlScalar(value)).join(', ') + ']'
+	if (inline.length <= INLINE_VALUES_LIMIT) return [inline + (trailingComment ? '   ' + trailingComment : '') + eol]
+	const lines = [indent + 'values:' + (trailingComment ? '   ' + trailingComment : '') + eol]
+	for (const value of values) lines.push(indent + '  - ' + yamlScalar(value) + eol)
+	return lines
+}
+
+const IMPORT_NOTE_MARKER = 'Declared by `import`'
+
+/**
+ * Add values to a declared field's `values:` list, in the write that first uses them.
+ *
+ * §4 makes this a MUST for any seeding mode that carries constrained values across, and
+ * says what the comment is for: recording that the seed put them there. The alternative is
+ * not "skip the declaration" — that would be a ledger whose vocabulary silently stopped
+ * constraining the one field with the most values in it — it is a hand edit, in the middle
+ * of the operation §4 calls large enough to breach closure without anyone noticing.
+ *
+ * The rendered form follows what is already there until it stops being readable: a list
+ * that no longer fits on one line becomes a block sequence, because two dozen labels inline
+ * is a diff nobody can read and this file is meant to be read at retirement.
+ */
+export function declareFieldValuesText(text, field, additions, note) {
+	const data = assertValidBeforeMutation(text)
+	const declared = (Array.isArray(data?.vocabulary?.fields) ? data.vocabulary.fields : []).find(
+		(entry) => isPlainObject(entry) && entry.field === field
+	)
+	if (!Array.isArray(declared?.values)) {
+		throw new Error('cannot declare values: `' + field + '` is not a field with a `values:` list in this vocabulary')
+	}
+	const fresh = additions.filter((value) => !declared.values.includes(value))
+	if (fresh.length === 0) return text
+
+	const eol = dominantLineEnding(text)
+	const lines = splitLines(text)
+	const fieldHead = new RegExp('^(\\s*)- field: ' + escapeRegExp(field) + '\\s*(?:#.*)?$')
+	const head = lines.findIndex((line) => fieldHead.test(lineContent(line)))
+	if (head < 0) throw new Error('cannot declare values: no `- field: ' + field + '` line found')
+	const indent = lineContent(lines[head]).match(/^(\s*)- /)[1] + '  '
+	const end = blockRange(lines, head, indent.length - 2)
+
+	const valuesHead = new RegExp('^' + indent + 'values:(\\s|$)')
+	let valuesIndex = -1
+	for (let i = head + 1; i < end; i += 1) {
+		if (valuesHead.test(lineContent(lines[i]))) {
+			valuesIndex = i
+			break
+		}
+	}
+	if (valuesIndex < 0) throw new Error('cannot declare values: `' + field + '` has no `values:` line')
+
+	const valuesEnd = blockRange(lines, valuesIndex, indent.length)
+	const trailingComment = lineContent(lines[valuesIndex]).match(/\s(#.*)$/)?.[1] ?? null
+	const replacement = renderValues([...declared.values, ...fresh], indent, eol, trailingComment)
+
+	// One note line, replaced rather than repeated, so a second import does not stack
+	// three comments saying the same thing above one list.
+	const hasNote = valuesIndex > 0 && lineContent(lines[valuesIndex - 1]).includes(IMPORT_NOTE_MARKER)
+	const noteLine = indent + '# ' + IMPORT_NOTE_MARKER + ' ' + note + eol
+	const from = hasNote ? valuesIndex - 1 : valuesIndex
+	lines.splice(from, valuesEnd - from, noteLine, ...replacement)
+
+	const updated = lines.join('')
 	assertValidAfterMutation(updated)
 	return updated
 }

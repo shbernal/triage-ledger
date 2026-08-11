@@ -2,7 +2,9 @@
 
 The vocabulary is written and the ledger is empty. Three ways in: start empty and `add` as
 things arrive, bulk-import from an issue tracker, or migrate an existing pile (a `TODO.md`,
-an export, a spreadsheet).
+an export, a spreadsheet). The last two are the same command — see [the bulk
+seed](#the-bulk-seed-import) below — because they differ only in where the records came
+from, which is something the ledger cannot see and does not need to.
 
 ## First: is it empty, or is it finished?
 
@@ -87,14 +89,59 @@ you counted in the retirement summary, next to the filter and for the same reaso
 
 **Be resumable.** Several hundred entries will not arrive in one pass — a rate limit, a
 dropped connection, a closed laptop. Re-running must skip ids already present and must not
-touch an entry whose status has moved. If you are writing the import yourself, build that
-in first, not after the first interruption.
+touch an entry whose status has moved. `import` does both; if you are seeding some other
+way, build that in first, not after the first interruption.
 
 **Declare before you use.** If you carry values across — imported labels, priorities,
 anything landing in a constrained field — collect the distinct set, write it into the
 vocabulary in the same edit, with a comment recording that the seed put it there, and only
 then attach it to entries. Bulk seeding is the one moment large enough to breach vocabulary
 closure without anyone noticing.
+
+## The bulk seed: `import`
+
+```sh
+gh issue list --state open --limit 400 --json number,title,url,labels > issues.json
+
+npx triage-ledger@0.1 import issues.json \
+  --type issue --status needs-triage \
+  --map 'id=upstream-issue-{number}' \
+  --map 'source=acme/renderer#{number}' \
+  --map 'summary={title}' \
+  --map 'tags[]={labels[].name}' \
+  --repo acme/renderer --filter 'is:open updated:>2023-08-08' --total-open 1051
+```
+
+**It does not fetch, and the query being yours is the point.** `upstream.filter` has to be
+the exact predicate that ran; if the tool built the query, that field would hold the tool's
+account of what it thinks it asked for. Run your own `gh`, `curl`, or export, hand over the
+JSON — an array or one object per line, from a file or `-` for stdin.
+
+`--map field={path}` takes a value from each record. A path reads a key, may be dotted
+(`author.login`), and `labels[].name` fans out over an array. Mixing a placeholder with
+literal text builds a value, which is how an id gets the prefix its kind declares.
+`--map 'field[]={path}'` writes a list, one element per array element, and takes exactly one
+path. Anything constant across every entry goes in `--type`, `--status`, `--source` or
+`--set` instead.
+
+**Run it and read what it refuses.** Every refusal below is one of the rules above, and
+none of them is worth working around:
+
+- *Values landing in a constrained field are undeclared.* Re-run with `--declare` and they
+  are written into the vocabulary in the same write as the entries, with a comment saying
+  the seed put them there. It never invents a type or a status: those arriving undeclared
+  is a mapping mistake, not a value carried across.
+- *No `--repo` / `--filter` / `--total-open`.* Owed once an entry's type declares a
+  `source_pattern`. A pile of your own — a migrated `TODO.md` under a local kind — owes
+  none of it, and none is invented.
+- *A different filter from the one already recorded.* The `upstream:` block describes one
+  import. Seed once, never reconcile.
+- *A record that does not resolve a field an entry cannot be written without.* Nothing is
+  written, deliberately: a mapping wrong for one record is suspect for the ones it happened
+  to resolve, and a half-seeded ledger is the state with no good way out.
+
+Interrupted, or a bigger export later? Run the same command again without the upstream
+flags. It skips ids already present and does not touch an entry whose status has moved.
 
 ## Two things that bite on Windows
 

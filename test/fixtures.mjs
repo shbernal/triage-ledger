@@ -107,5 +107,42 @@ items:
     first_seen: 2026-01-01
 `
 
+/**
+ * An empty ledger ready to be seeded: one external kind, one local kind, one constrained
+ * field, and deliberately **no** `upstream:` block — which is the state `init` leaves and
+ * the state every import test has to start from.
+ */
+export const SEEDABLE_LEDGER = `schema: 1
+
+source_kinds:
+  - type: issue
+    source_pattern: '^[\\w.-]+/[\\w.-]+#\\d+$'
+    id_prefix: upstream-issue-
+  - type: todo
+
+vocabulary:
+  statuses:
+    - status: needs-triage
+      class: untriaged
+    - status: dropped
+      class: dismissed
+  non_target_reasons:
+    - reason: no-repro
+      describes: Nobody could reproduce it.
+      about: item-state
+      retire_to: null
+  evidence_kinds:
+    - kind: repro
+      describes: Actually ran it.
+  fields:
+    # This comment sits above the one constrained field. A seed that declares values into
+    # that field must not eat it — the comment is why the field looks like this.
+    - field: tags
+      describes: Labels carried across from the upstream tracker, verbatim.
+      values: []
+
+items: []
+`
+
 /** Every character class that has ever corrupted a write, in one string. */
 export const HOSTILE_SUMMARY = '  A & B | C < D > "E" $HOME `f` [g] {h} #i: j\\k  '

@@ -28,7 +28,11 @@ npx triage-ledger@0.1 init           # an empty ledger and a vocabulary skeleton
    `retire_to` destination declared for every dismissal reason. Before you seed. Deciding
    what you will drop *before* you have seen the 400 specific things is the difference
    between a policy and 400 case-by-case rationalizations.
-2. **Seed it** — start empty and `add` as you go, or migrate an existing pile.
+2. **Seed it** — start empty and `add` as you go, or `import` a pile you already have.
+   `import` reads a JSON array or JSONL from a file or stdin and maps its keys onto entry
+   fields; it does not fetch, so the query stays yours and `upstream.filter` records the
+   predicate you actually ran. Re-running skips ids already present and leaves anything
+   triaged alone, which is how a seed survives a rate limit or a closed laptop.
 3. **Drain it** — `next`, bulk `set-status --to <status>` with a filter, `stats`, until
    nothing is undecided.
 4. **Retire it** — `retire --check`, distil each dismissal reason into one sentence at its

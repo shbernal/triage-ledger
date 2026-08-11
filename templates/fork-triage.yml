@@ -46,6 +46,10 @@ source_kinds:
 # from now a reader has to be able to tell "we triaged this backlog" from "we triaged the
 # last three years of it", and nothing else in the file records that.
 #
+# `import --repo … --filter … --total-open …` writes it for you. Once it has, delete the
+# example below: two blocks, one real and one not, is exactly the ambiguity this records
+# against.
+#
 # upstream:
 #   repo: owner/repo
 #   imported_at: 1970-01-01
@@ -224,13 +228,15 @@ vocabulary:
       # removes `not-assessed` as the universal starting value for the entry type whose
       # triage is most expensive.
 
-    # Imported labels land in a field like this one. The seeding step declares them in
-    # the same write that first uses them — 12 label names is 12 lines of YAML, and the
-    # alternative punches the one real invariant this format has.
+    # Imported labels land in a field like this one. `import --declare` collects the
+    # distinct set and writes it here in the same write that first uses it — 12 label
+    # names is 12 lines of YAML, and the alternative punches the one real invariant this
+    # format has. Without `--declare` the import refuses and prints what it found, which
+    # is the same rule stated as a question rather than as a write.
     #
     # - field: tags
     #   describes: Labels carried across from the upstream tracker, verbatim.
-    #   values: []   # the seed fills this in
+    #   values: []   # `import --declare` fills this in
 
 # An empty list is not an unfinished ledger — it is retirement.
 items: []
