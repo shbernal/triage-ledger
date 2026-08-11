@@ -432,6 +432,21 @@ or `inconclusive`. Three and not two, because a check that neither confirmed the
 behaviour nor refuted it has an honest outcome, and recording it as `fail` is how a
 reproduction nobody managed to run becomes a bug nobody has.
 
+**`spec_refs` is wider than its name, deliberately.** It holds what the claim rests on — a
+spec section, an advisory, a commit — and, where the reason declares `requires_evidence`,
+the conclusion those references support, written as one clause:
+
+```yaml
+spec_refs: ['exceljs calls uuid v4 and never passes `buf`']
+```
+
+§6 asks the destination document for exactly that clause, per entry, and no other
+sub-field is a place to put it: `summary` says what was found, `kinds` says what kind of
+proof was claimed, `result` says how the check came out. None of them says what it
+concluded. A ledger with nowhere to write the conclusion does not stop producing
+conclusions — it writes them into a project field, or into a comment in a script that gets
+deleted at retirement, or nowhere at all.
+
 **What the ratchet buys here is narrower than it looks, and the difference is worth
 stating.** A reason declaring `requires_evidence: [repro]` is satisfied by *naming* the
 kind. Nothing in the file distinguishes an entry whose reproduction was genuinely
@@ -811,6 +826,24 @@ boundary does settle, and one sentence is the whole of it. Note what this does n
 the per-entry lines are the *conclusions*, one clause each, not the migrated entries. If
 they cannot be written that short, the reason was covering several decisions wearing one
 name, and the fix is upstream of retirement.
+
+**One further distinction decides what the line is worth, and the vocabulary cannot see
+it.** Where the clause is a claim *about the code* — this input is never attacker-controlled,
+that path is unreachable from any entry point — the code outlives the ledger. A reader who
+lost the line can get it back by opening the file the entry names, and what the ledger saved
+them was an hour, not a fact. Where the clause is a decision *about the claim* — the finding
+is real, we are carrying it, this is who carries it and against what alternative — nothing
+recovers it. Not the repository, not `git log`, not a competent re-read: the argument was
+made in a meeting or in somebody's head, and the only record of it is the one written at the
+time the decision was made.
+
+`requires_evidence` does not distinguish the two, and neither does `about` — a reason of
+either kind can demand the same proof, because the proof is that somebody looked, not that
+the looking settled anything. So the vocabulary decides *who* owes a line, and the person
+writing the reason is the only one who knows *which kind* it is. Where it is the second, the
+clause is the whole of what retirement preserves: a destination that received the entries and
+not the argument has kept the paperwork and lost the decision. Write those at the moment they
+are decided, not at retirement — by retirement the only copy may be a memory.
 
 **Which of the two is the common case inverts between the two piles §1 names.** A fork's
 reasons are **boundaries**: properties of the forking project — we are ESM-only, we
