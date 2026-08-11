@@ -53,7 +53,12 @@ dead project "last updated" does not measure project activity — the maintainer
 It measures *"this still hurts someone"*, which is exactly the signal a triage wants.
 Filtering on when something was *filed* selects for a different and much worse set.
 
-**A rule-based source has a step before the ledger.** If the pile comes from a scanner, a
+**A source whose unit is not the ledger's has a step before the ledger.** The ledger's unit
+is the entry — one entry, one decision — and where the source counts in something else,
+there is a decision above the entry that the ledger has no unit for and cannot record
+afterwards. Two shapes of this, and both are common.
+
+*Rules.* If the pile comes from a scanner, a
 linter or a grep — anything applying rules rather than reporting incidents — then most of
 what it emits is one decision repeated, not many decisions. A single pattern routinely
 accounts for the overwhelming majority of the hits and is wrong on every one of them: a
@@ -68,6 +73,17 @@ where it keeps working, and not in a ledger designed to be deleted; what survive
 what the ledger is for. Record which rules you turned off and why, next to the filter and
 for the same reason — it is the difference between "we triaged the scan" and "we triaged
 the part of it we kept".
+
+*Documents.* If the pile comes out of something somebody wrote — a `TODO.md`, a list of
+open questions — the unit is the writing, and the step is **choosing what an entry is**.
+Six headings can honestly be six entries or eighteen. One per heading makes every decision
+after it a compound one, and the entry then cannot reach a status without being partly
+false; one per bullet splits questions that are genuinely single, and the same argument
+gets made three times. The document declares its own unit in places (*"the sub-questions,
+in order"*) and not in others, and where it does not, the choice is the seeder's and is
+invisible from the ledger afterwards — nothing in an entry records that it used to be a
+third of something. So make it once, deliberately, before any entry exists, and say what
+you counted in the retirement summary, next to the filter and for the same reason.
 
 **Be resumable.** Several hundred entries will not arrive in one pass — a rate limit, a
 dropped connection, a closed laptop. Re-running must skip ids already present and must not

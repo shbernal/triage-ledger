@@ -112,6 +112,7 @@ Fields (add, set-status) — add requires --id, --source, --type and --status
   --first-seen <YYYY-MM-DD>   Defaults to today
   --date <YYYY-MM-DD>         The date written as last_reviewed (default: today)
   --set field=value           Any field your project declared for itself
+  --set field[]=value         One element of a list-valued field; repeat per element
 
 Evidence (set-status) — nothing reaches a class that requires it without these
   --evidence <k[,k…]>         evidence.kinds; must name declared evidence kinds
@@ -306,9 +307,30 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 				case '--set': {
 					// `--set field=value` covers every field a project declared for itself.
 					// The alternative was a flag per field, which the CLI cannot know.
+					//
+					// §7 lets an entry's value be a list, and every element must be declared.
+					// `field[]=` is how one gets written: repeat it, one element per flag, in
+					// order. Not a comma-split of the scalar form, because a declared value may
+					// contain a comma and nothing would tell you it had been cut in half.
 					const split = value.indexOf('=')
-					if (split < 0) throw new Error('--set takes field=value')
-					options.set[value.slice(0, split)] = value.slice(split + 1)
+					if (split < 0) throw new Error('--set takes field=value, or field[]=value per element for a list')
+					const rawField = value.slice(0, split)
+					const isElement = rawField.endsWith('[]')
+					const field = isElement ? rawField.slice(0, -2) : rawField
+					if (field === '') throw new Error('--set takes field=value, or field[]=value per element for a list')
+					const element = value.slice(split + 1)
+					const existing = options.set[field]
+					if (existing !== undefined) {
+						// Two spellings of one field, or one spelling twice: the second used to win
+						// silently. There is no reading of that which is not a mistake — a list was
+						// meant, or a value was, and guessing which turns a typo into a written fact.
+						if (!isElement || !Array.isArray(existing)) {
+							throw new Error('--set ' + field + ' given more than once — use ' + field + '[]= for each element of a list')
+						}
+						existing.push(element)
+					} else {
+						options.set[field] = isElement ? [element] : element
+					}
 					break
 				}
 			}

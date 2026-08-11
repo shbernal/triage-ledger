@@ -702,13 +702,24 @@ function distil(index) {
 			groups.get(name).push(item)
 		}
 	}
-	return [...groups.entries()].map(([reason, items]) => ({
-		reason,
-		retire_to: index.reasons.get(reason)?.retire_to ?? null,
-		describes: index.reasons.get(reason)?.describes ?? null,
-		count: items.length,
-		items: items.map((item) => ({ id: item.id, summary: item.summary })),
-	}))
+	return [...groups.entries()].map(([reason, items]) => {
+		const declared = index.reasons.get(reason)
+		// §6 decides per reason which of the two a destination owes, and the vocabulary
+		// already marks it: a reason declaring `requires_evidence` is one whose instances each
+		// carry a distinct claim — demanding evidence per entry is precisely that statement —
+		// so its destination gets a line apiece. Printing "not one line per entry" over those
+		// is the spec's own exception, inverted, in the one command that reads it aloud.
+		const demands = Array.isArray(declared?.requires_evidence) ? declared.requires_evidence.filter((k) => typeof k === 'string') : []
+		return {
+			reason,
+			retire_to: declared?.retire_to ?? null,
+			describes: declared?.describes ?? null,
+			requires_evidence: demands,
+			owes: demands.length > 0 ? 'a line per entry' : 'one sentence',
+			count: items.length,
+			items: items.map((item) => ({ id: item.id, summary: item.summary })),
+		}
+	})
 }
 
 export async function commandRetire(options, io) {
@@ -807,14 +818,43 @@ export async function commandRetire(options, io) {
 			)
 			return 0
 		}
-		const lines = [
-			'One sentence per reason, at its destination. Not one line per entry — twelve entries',
-			'dismissed for one reason owe one durable statement, and the entries evaporate into',
-			'git history.',
-			'',
-		]
+		// Which of the two instructions leads depends on the ledger, and getting that from the
+		// ledger rather than from an assumption is the point. A fork's reasons are boundaries —
+		// properties of the forking project, true of every entry under them in the same way —
+		// so one sentence really is the whole of it, and line-per-entry is the exception. A
+		// project's own pile has no foreign side and its reasons are routings, which are
+		// per-entry by construction; there the exception is the whole file.
+		const perEntry = groups.filter((group) => group.owes === 'a line per entry')
+		const lines =
+			perEntry.length === 0
+				? [
+						'One sentence per reason, at its destination. Not one line per entry — twelve entries',
+						'dismissed for one reason owe one durable statement, and the entries evaporate into',
+						'git history.',
+						'',
+					]
+				: perEntry.length === groups.length
+					? [
+							'A line per entry, at each destination: every reason here demands evidence, and',
+							'demanding it per entry is the statement that the reason does not settle them. The',
+							'line is the conclusion, one clause each — not the migrated entry. If it cannot be',
+							'written that short, the reason was covering several decisions under one name.',
+							'',
+						]
+					: [
+							'One sentence per reason, at its destination — not one line per entry, since twelve',
+							'entries dismissed for one reason owe one durable statement.',
+							'',
+							'Except where the reason demands evidence, marked below: demanding it per entry says',
+							'the reason does not settle them, so those destinations owe a line apiece — the',
+							'conclusion, one clause each, not the migrated entry.',
+							'',
+						]
 		for (const group of groups) {
-			lines.push('── ' + group.reason + ' (' + group.count + ') → ' + (group.retire_to === null ? 'null (evaporates)' : group.retire_to))
+			lines.push(
+				'── ' + group.reason + ' (' + group.count + ') → ' + (group.retire_to === null ? 'null (evaporates)' : group.retire_to) +
+					'   owes ' + group.owes + (group.requires_evidence.length > 0 ? ' (requires evidence: ' + group.requires_evidence.join(', ') + ')' : '')
+			)
 			if (group.describes) lines.push('   ' + String(group.describes).trim().replace(/\s*\n\s*/g, ' '))
 			for (const item of group.items) lines.push('     ' + item.id + '  ' + (item.summary ?? ''))
 			lines.push('')
@@ -865,6 +905,18 @@ export async function commandRetire(options, io) {
 				  ' already been pruned from this ledger and ' + (pruned === 1 ? 'is' : 'are') +
 				  ' in neither count — `git log -- ' + ledgerPath + '`.'
 
+		// Kept and dropped are the two terminal classes, so an entry still untriaged or parked
+		// is in neither, and the draft used to say "Triaged 18 … Kept 0, dropped 8" without the
+		// arithmetic showing. retire.md orders the check before the summary and the check would
+		// have caught it, so this is only reachable by working out of order — which is exactly
+		// when a plausible sentence gets pasted into the one document that outlives everything.
+		const outstanding = outstandingItems(index)
+		const undecided =
+			outstanding.length === 0
+				? ''
+				: ' ' + outstanding.length + (outstanding.length === 1 ? ' entry is' : ' entries are') +
+				  ' still undecided and in neither count — this was drafted before the triage finished.'
+
 		const clauses = []
 		if (isMapping(upstream)) {
 			clauses.push(
@@ -878,7 +930,7 @@ export async function commandRetire(options, io) {
 		if (local.length) clauses.push(phrase(local) + ' raised in this project')
 		const draft =
 			'Triaged ' + (clauses.join(', and ') || '0 entries') +
-			'. Kept ' + done + ', dropped ' + dismissed + '.' + missing
+			'. Kept ' + done + ', dropped ' + dismissed + '.' + undecided + missing
 
 		if (options.json) {
 			io.stdout(
@@ -888,6 +940,7 @@ export async function commandRetire(options, io) {
 					upstream: upstream ?? null,
 					kept: done,
 					dropped: dismissed,
+					outstanding: outstanding.map((item) => ({ id: item.id, status: item.status })),
 					imported: isMapping(upstream) ? (upstream.matched ?? null) : null,
 					stillPresent: imported,
 					pruned,
@@ -909,6 +962,10 @@ export async function commandRetire(options, io) {
 				'Kept and dropped are counted from the entries still in this ledger, and pruning',
 				'removes exactly the ones that count as kept — so draft this before you prune.',
 				pruned === 0 ? null : 'It is already too late for ' + pruned + ' of them; the draft says so, and `git log` has them.',
+				outstanding.length === 0
+					? null
+					: 'This triage is not finished — `retire --check` lists what is outstanding. The draft',
+				outstanding.length === 0 ? null : 'says so rather than letting the counts imply otherwise.',
 				'',
 				draft,
 			]

@@ -16,7 +16,7 @@
  */
 
 import { hasOwn, indexLedger, isIsoDate, parseLedgerText, readsBackAsItself, todayIsoDate } from './ledger.mjs'
-import { DECISION_FIELD_CLASSES } from './model.mjs'
+import { DECISION_FIELD_CLASSES, SPEC_FIELDS } from './model.mjs'
 import { validateLedgerText } from './validate.mjs'
 
 /**
@@ -357,6 +357,14 @@ export function updateLedgerItemText(text, id, updates) {
  *
  * Expressed against the class, never a status name, and driven by the same table the
  * validator reads.
+ *
+ * That table covers the two fields the *spec* attaches to a decision. A project attaches
+ * its own, by declaring `requires:` on a status (§7), and those strand exactly the same
+ * way: park an entry on a status requiring `unblocked_by`, dismiss it, and the entry
+ * asserts a dismissal and a gate it is still waiting behind. The vocabulary already says
+ * which field carried which status's decision, so the withdrawal reads it rather than
+ * hardcoding a third row. Spec-governed fields are left to the class table above — this
+ * rung of the ladder does not get to reach down and remove `evidence`.
  */
 export function setLedgerItemStatusText(text, id, status, { reviewDate = todayIsoDate(), fields = {} } = {}) {
 	const data = assertValidBeforeMutation(text)
@@ -369,6 +377,14 @@ export function setLedgerItemStatusText(text, id, status, { reviewDate = todayIs
 	const withdrawn = {}
 	for (const [field, classes] of Object.entries(DECISION_FIELD_CLASSES)) {
 		if (cls !== null && !classes.includes(cls) && !hasOwn(fields, field)) withdrawn[field] = REMOVE_FIELD
+	}
+	const previous = index.items.find((item) => item?.id === id)
+	if (previous && previous.status !== status) {
+		const stillRequired = new Set(index.requiredByStatus(status))
+		for (const field of index.requiredByStatus(previous.status)) {
+			if (stillRequired.has(field) || SPEC_FIELDS.includes(field) || hasOwn(fields, field)) continue
+			withdrawn[field] = REMOVE_FIELD
+		}
 	}
 	return updateLedgerItemText(text, id, { status, last_reviewed: reviewDate, ...withdrawn, ...fields })
 }

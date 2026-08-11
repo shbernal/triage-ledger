@@ -410,9 +410,16 @@ function validateItemIdentity(report, index, item, label) {
 	if (typeof kind.id_prefix === 'string' && typeof item.id === 'string') {
 		if (!item.id.startsWith(kind.id_prefix)) {
 			report.error(label + ': id must start with `' + kind.id_prefix + '`, declared for type `' + item.type + '`')
-		} else {
+		} else if (typeof kind.source_pattern === 'string') {
 			// Where both ends carry a number, they must agree. This catches the copy-paste
 			// error, which happens during bulk seeding and essentially nowhere else.
+			//
+			// Gated on `source_pattern`, because that is the declaration that each entry maps
+			// to one numbered thing somewhere else — the only arrangement in which the two
+			// numbers are meant to be the same one. A local kind's `source` is a location, and
+			// a migrated pile is many entries to one location: `q1-3` under `TODO.md#Q1`, the
+			// source's number naming the group and the id's naming the item. Checked there it
+			// refuses correct entries wholesale and admits whichever ones collide by luck.
 			const idNumber = item.id.match(/(\d+)$/)?.[1]
 			const sourceNumber = typeof item.source === 'string' ? item.source.match(/(\d+)\s*$/)?.[1] : null
 			if (idNumber && sourceNumber && idNumber !== sourceNumber) {

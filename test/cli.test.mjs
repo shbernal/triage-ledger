@@ -669,3 +669,63 @@ test('the retirement summary attributes to the upstream only what came from it',
 		assert.doesNotMatch(draft, /advisorys/)
 	})
 })
+
+test('--set writes a list only when it is asked to, and refuses to guess', () => {
+	// §7 lets an entry's value be a list and requires every element to be declared. There
+	// was no way to write one: the CLI set the whole string, the validator refused it as an
+	// undeclared value, and the only route left was the hand edit §4 promises nobody needs.
+	const list = parseArgs(['set-status', 'q1-1', 'dropped', '--set', 'concerns[]=slide-kit', '--set', 'concerns[]=w-work'])
+	assert.deepEqual(list.set.concerns, ['slide-kit', 'w-work'])
+
+	// One element is still a list, because `[]` said so. A scalar is still a scalar, and a
+	// comma inside it is part of the value — splitting on it would cut a declared value in
+	// half and nothing downstream could tell that it had happened.
+	assert.deepEqual(parseArgs(['set-status', 'q1-1', 'dropped', '--set', 'concerns[]=slide-kit']).set.concerns, ['slide-kit'])
+	assert.equal(parseArgs(['set-status', 'q1-1', 'dropped', '--set', 'note=a, b']).set.note, 'a, b')
+
+	// Repeating a field used to be last-wins, silently. A list was meant or a value was, and
+	// guessing which turns a typo into a written fact.
+	assert.throws(() => parseArgs(['set-status', 'q1-1', 'dropped', '--set', 'a=1', '--set', 'a=2']), /given more than once/)
+	assert.throws(() => parseArgs(['set-status', 'q1-1', 'dropped', '--set', 'a=1', '--set', 'a[]=2']), /given more than once/)
+})
+
+test('--distil says which of the two each destination owes, and the vocabulary decides', async () => {
+	// §6's rule is one sentence per reason, and its exception is a reason declaring
+	// `requires_evidence` — demanding evidence per entry is the statement that the reason
+	// does not settle its entries, so those destinations owe a line apiece. The command
+	// printed "Not one line per entry" over every reason including those.
+	await inTempDir(async () => {
+		await seedForkLedger()
+		await run(
+			['add', '--id', 'upstream-issue-3', '--source', 'acme/renderer#3', '--type', 'issue',
+				'--status', 'needs-triage', '--summary', 'a third thing', '--first-seen', '2026-01-01'],
+			capture().io
+		)
+		await run(
+			['set-status', 'upstream-issue-3', 'non-target', '--reason', 'not-reproducible', '--evidence', 'repro'],
+			capture().io
+		)
+
+		// Every reason in play demands evidence, which is the whole file on a ledger whose
+		// reasons are routings rather than boundaries. The exception leads.
+		const only = capture()
+		assert.equal(await run(['retire', '--distil'], only.io), 0)
+		assert.match(only.out.join('\n'), /A line per entry, at each destination/)
+		assert.match(only.out.join('\n'), /not-reproducible \(1\).*owes a line per entry \(requires evidence: repro\)/)
+
+		await run(['set-status', 'upstream-issue-1', 'non-target', '--reason', 'stale-no-repro'], capture().io)
+		const mixed = capture()
+		assert.equal(await run(['retire', '--distil'], mixed.io), 0)
+		const text = mixed.out.join('\n')
+		assert.match(text, /Except where the reason demands evidence/)
+		assert.match(text, /stale-no-repro \(1\).*owes one sentence/)
+		assert.doesNotMatch(text, /stale-no-repro \(1\).*requires evidence/)
+
+		// And the draft nobody is meant to write yet says what it is not counting: two of the
+		// three are decided, and "Kept 0, dropped 2" over three entries is arithmetic a reader
+		// has no way to check against a ledger they are about to delete.
+		const summary = capture()
+		assert.equal(await run(['retire', '--summary'], summary.io), 0)
+		assert.match(summary.out.join('\n'), /1 entry is still undecided and in neither count/)
+	})
+})

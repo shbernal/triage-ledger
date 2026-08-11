@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { parseLedgerText } from '../src/ledger.mjs'
+import { hasOwn, parseLedgerText, todayIsoDate } from '../src/ledger.mjs'
 import { validateLedgerText } from '../src/validate.mjs'
 import {
 	addLedgerItemText,
@@ -241,4 +241,64 @@ test('a mutation refuses to run against a conflicted ledger', () => {
 		'<<<<<<< HEAD\n    status: taken\n=======\n    status: dropped\n>>>>>>> other\n    first_seen: 2026-01-01'
 	)
 	assert.throws(() => setLedgerItemStatusText(conflicted, 'todo-2', 'dropped'), /unresolved merge conflict/)
+})
+
+test('the date a mutation stamps is the local calendar date, not UTC', () => {
+	// §3's dates are zoneless calendar dates, and the two rules over them have deliberately
+	// asymmetric tolerance: a future `last_reviewed` gets one day of slack so two machines in
+	// different zones can write one ledger, and `last_reviewed >= first_seen` gets none. Read
+	// in UTC, a single machine spends that slack on itself — an evening west of Greenwich
+	// stamps tomorrow, which is the permanently-fresh signal §3 made illegal, and a morning
+	// east of it stamps yesterday, which cannot be transitioned at all.
+	const original = process.env.TZ
+	try {
+		process.env.TZ = 'America/New_York'
+		assert.equal(todayIsoDate(new Date(Date.UTC(2026, 7, 12, 1, 0, 0))), '2026-08-11')
+		process.env.TZ = 'Pacific/Auckland'
+		assert.equal(todayIsoDate(new Date(Date.UTC(2026, 7, 10, 21, 0, 0))), '2026-08-11')
+	} finally {
+		if (original === undefined) delete process.env.TZ
+		else process.env.TZ = original
+	}
+})
+
+test('a field the old status required is withdrawn with the decision it carried', () => {
+	// The same failure the two spec-owned fields are withdrawn for, one rung up the ladder:
+	// the project names which field carries its own status's decision, and leaving it behind
+	// makes the entry assert a dismissal and a gate it is still waiting behind.
+	const withRequirement = LEDGER.replace(
+		'    - status: dropped',
+		`    - status: waiting
+      class: parked
+      requires: [unblocked_by]
+    - status: dropped`
+	).replace(
+		'  evidence_kinds:',
+		`  fields:
+    - field: unblocked_by
+      describes: What has to exist before there is anything to reason from.
+  evidence_kinds:`
+	)
+
+	const parked = setLedgerItemStatusText(withRequirement, 'todo-1', 'waiting', {
+		reviewDate: '2026-02-02',
+		fields: { unblocked_by: 'a second consumer' },
+	})
+	assert.equal(itemById(parked, 'todo-1').unblocked_by, 'a second consumer')
+
+	const dismissed = setLedgerItemStatusText(parked, 'todo-1', 'dropped', {
+		reviewDate: '2026-02-09',
+		fields: { non_target_reasons: ['out-of-scope'] },
+	})
+	assert.equal(hasOwn(itemById(dismissed, 'todo-1'), 'unblocked_by'), false)
+	assert.deepEqual(itemById(dismissed, 'todo-1').non_target_reasons, ['out-of-scope'])
+
+	// A field the new status also requires stays, and so does one the caller supplied.
+	const stillParked = setLedgerItemStatusText(parked, 'todo-1', 'waiting', { reviewDate: '2026-02-09' })
+	assert.equal(itemById(stillParked, 'todo-1').unblocked_by, 'a second consumer')
+	const kept = setLedgerItemStatusText(parked, 'todo-1', 'dropped', {
+		reviewDate: '2026-02-09',
+		fields: { non_target_reasons: ['out-of-scope'], unblocked_by: 'kept on purpose' },
+	})
+	assert.equal(itemById(kept, 'todo-1').unblocked_by, 'kept on purpose')
 })

@@ -198,15 +198,28 @@ source_kinds:
 - `source_pattern` is a regular expression an entry's `source` **MUST** match. A kind
   with **no** `source_pattern` is a **local kind** — work that came from nowhere but
   your own head, whose `source` is a free string like `local`.
-- `id_prefix`, when declared, **MUST** prefix the `id` of every entry of that type, and
-  where both the id and the source end in a number, the numbers **MUST** agree. This
-  catches the copy-paste error, which happens during bulk seeding and nowhere else.
+- `id_prefix`, when declared, **MUST** prefix the `id` of every entry of that type. Where
+  the kind **also** declares a `source_pattern` and both the id and the source end in a
+  number, the numbers **MUST** agree. This catches the copy-paste error, which happens
+  during bulk seeding and nowhere else.
 
-The number-agreement half of that assumes the source is numbered. Against an identifier
-that is not — `GHSA-fx2h-pf6j-xcff`, a commit hash, a UUID — the check applies or not
-according to whether the last character happens to be a digit, which is to say at random,
-and an entry can pass by coincidence: a source ending in `3` sitting at `-3` in your own
-numbering. Passing by coincidence is worse than failing, because failing is visible.
+The number half is conditioned on `source_pattern` because that is the declaration that
+each entry maps to one numbered thing somewhere else, which is the only arrangement in
+which two numbers are *meant* to be the same one. A local kind's `source` is a location
+rather than an identifier, and a pile migrated out of one document is many entries to one
+location — `q1-3` under `TODO.md#Q1`, the source's number naming the group and the id's
+naming the item. Checked there, the rule refuses correct entries wholesale and admits
+whichever ones collide, so the survivors of a seed that mostly failed are the ones that
+got lucky. A local kind has every reason to declare `id_prefix` anyway, for the other
+thing it does: making teardown one grep for one literal string (§6). That half stands
+alone and is why the two are separable.
+
+Inside the external case the rule assumes the source is numbered, and that assumption
+fails too. Against an identifier that is not — `GHSA-fx2h-pf6j-xcff`, a commit hash, a
+UUID — the check applies or not according to whether the last character happens to be a
+digit, which is to say at random, and an entry can pass by coincidence: a source ending
+in `3` sitting at `-3` in your own numbering. Passing by coincidence is worse than
+failing, because failing is visible.
 Where the source id is alphanumeric, **carry it into your own id** —
 `adv-fx2h-pf6j-xcff` for `GHSA-fx2h-pf6j-xcff` — and the guessing stops. Neither id ends
 in a number, the check no longer fires either way, and the mismatch it exists to catch has
@@ -784,6 +797,26 @@ the per-entry lines are the *conclusions*, one clause each, not the migrated ent
 they cannot be written that short, the reason was covering several decisions wearing one
 name, and the fix is upstream of retirement.
 
+**Which of the two is the common case inverts between the two piles §1 names.** A fork's
+reasons are **boundaries**: properties of the forking project — we are ESM-only, we
+replaced that subsystem — true of every entry under them in the same way. One sentence
+really is the whole of it, and the line-per-entry case above is the exception. A project
+triaging a pile of its own has no foreign side and nothing in it is out of scope, because
+every entry was written by somebody who wanted it. The reasons that fire there are
+**routings**: which repository owns this, what would have to exist before it can be
+answered, which standing rule already answered it. A routing is per-entry by construction
+— the repository differs, the trigger differs, the rule that fired differs — so on that
+path the exception is the whole file and the `commonjs` example is the case that does not
+occur. Neither is a defect and neither is the default. The vocabulary decides, and
+`requires_evidence` is where it says so.
+
+That is also where `retire_to` strains, because it is declared per reason. Right when the
+destination is a property of the boundary; wrong when the reason is a routing, where five
+entries under one reason can belong to four different repositories and the honest
+destination is one document naming where each went — a per-entry answer wearing a
+per-reason key. Writing that document is the fix, and it is what this rule was asking for
+in the first place.
+
 **And nothing verifies that the sentence got written.** A destination is checkable to the
 extent that a path resolves, which is what "checkable" above means and all it means: a
 reason pointed at a `README.md` that has never mentioned it passes every check in this
@@ -1105,15 +1138,26 @@ Read that as the general test, because `superseded` is only the sharpest instanc
 a status is class `done` when there is something in this repository to point at, and
 class `dismissed` when the honest output is a sentence.
 
-**A decision that has to be revisited on a date is one this format records and does not
-schedule.** An accepted risk, a waiver, an exception granted until the next release: each
+**A decision that has to be revisited on a date — or on an event — is one this format
+records and does not schedule.** An accepted risk, a waiver, an exception granted until
+the next release, a question nobody can answer until a second consumer exists: each
 is honestly `dismissed`, because each is a decision *against* doing the work as filed, and
 a class that blocks retirement would turn every one of them into a permanent open item —
 which is the outcome the register they are written into exists to prevent. What follows is
 that nothing re-raises them. `dismissed` is terminal, and `last_reviewed` records when
-somebody looked, never when somebody must look again. Put the date in the destination
-document. That is the artifact still there when the ledger is gone, and a date that must
+somebody looked, never when somebody must look again. Put the trigger in the destination
+document. That is the artifact still there when the ledger is gone, and a trigger that must
 outlive the ledger cannot be stored in it.
+
+The event half is the one that parks a pile, and it does not look like a decision when it
+arrives. *Not until there is a second engagement* is not expensive — it is
+**unanswerable**, because the thing it would be reasoned against does not exist yet — and
+parking is the honest-looking move. It promises a return nobody can schedule, which is the
+one promise a file designed to be deleted cannot keep, and a pile of open questions can
+park half of itself this way and never close. Dismissed instead, with the trigger written
+into the document that carries the decision, the promise is kept by the artifact that
+survives it: whoever arrives with the second engagement in hand finds the question where
+it was left, and whoever arrives without one finds the answer.
 
 A project **SHOULD** define at least one status per class it intends to use, and the
 names are entirely its own.
@@ -1212,18 +1256,28 @@ about is one you will not apply consistently.
 
 ## 8. Graduation — the other exit
 
-Some projects drain the pile they inherited and then want to keep the file for their own
-work. That is not a failure and not drift, provided it is explicit.
+Some projects drain the pile they started from and then want to keep the file for their
+own work. That is not a failure and not drift, provided it is explicit.
 
-**This spec governs entries with external provenance.** A project **MUST** retire all of
-those — distil, summarize, prune — before keeping the file for its own accretion. At the
-moment you add your own item types and your own reasons for your own work, you have
-forked the vocabulary and this spec stops applying. You now own a permanent ledger, and
-the tooling is yours to keep or drop.
+**This spec governs the pile the ledger was seeded with.** A project **MUST** retire all
+of it — distil, summarize, prune — before keeping the file for its own accretion.
 
-The point that graduation preserves is the only one that mattered: **the inherited
-backlog still had to reach empty.** What you build on the empty file afterwards is your
-business.
+Not *"all the entries that came from somewhere else"*. Conditioned on provenance the
+requirement is satisfied by the empty set on any ledger that never had an upstream, so a
+project that migrated its own `TODO.md` could keep the file permanently, with the whole
+pile undecided, and be conformant — which would make the second of the two exits
+unreachable on the path §1 spends half its examples on. Where the pile came from was
+never what made it a pile.
+
+Nor does writing your own vocabulary end it. Adding your own item types and your own
+reasons is what §4 and the setup guidance tell a project with no upstream to do *before*
+seeding, so read as the trigger it would stop this spec applying to every such ledger at
+the moment its vocabulary was written. **The trigger is the file reaching empty.** After
+that you own a permanent ledger, the tooling is yours to keep or drop, and the vocabulary
+is yours to fork.
+
+The point that graduation preserves is the only one that mattered: **the pile still had
+to reach empty.** What you build on the empty file afterwards is your business.
 
 ---
 

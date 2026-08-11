@@ -75,6 +75,20 @@ everything all twelve entries were dismissed for, so one sentence is the whole o
 this backwards and the next reader redoes the analysis the ledger already charged for,
 which is the failure the whole step exists to prevent.
 
+Which of the two you are mostly doing depends on where the pile came from, so do not
+assume. A fork's reasons are boundaries — properties of *your* project, true of every
+entry under them the same way — and one sentence is the whole of it. A pile you wrote
+yourself has no foreign side, so its reasons are routings: which repo owns this, what
+would have to exist first, which standing rule already answered it. Those are per-entry by
+construction, and on that path a line per entry is the whole file rather than the
+exception. `retire --distil` reads the vocabulary and marks each reason with which it
+owes; that mark is the answer, not the shape of the example above it.
+
+One consequence to expect on the routing path: `retire_to` is declared per reason, and
+five entries under one reason can belong to four different repositories. The destination
+is then one document naming where each went. Write it — that is the per-entry line, and
+the pointer document is usually the most useful thing the whole triage produces.
+
 ## 3. Write the summary
 
 ```sh
@@ -150,12 +164,16 @@ other one — see [setup.md](setup.md).
 
 ## The other exit: graduation
 
-Some projects drain what they inherited and then want to keep the file for their own work.
-That is fine, provided it is explicit. The spec governs entries with external provenance:
-retire all of those — distil, summarize, prune — before keeping the file. At the moment the
-project adds its own item types and its own reasons for its own work, it has forked the
-vocabulary and the spec stops applying. It now owns a permanent ledger, and the tooling is
-its own to keep or drop.
+Some projects drain the pile and then want to keep the file for their own work. That is
+fine, provided it is explicit. The spec governs the pile the ledger was seeded with: retire
+all of it — distil, summarize, prune — before keeping the file. Not "everything that came
+from somewhere else", which is nothing at all on a ledger that migrated a project's own
+`TODO.md`, and would let that project keep the file forever having decided none of it.
 
-The point graduation preserves is the only one that mattered: **the inherited backlog still
-had to reach empty.**
+The trigger is the file reaching empty, and nothing else is. Writing your own item types
+and your own reasons is not it — that is what setup told a project with no upstream to do
+before seeding. After empty, the project owns a permanent ledger, the tooling is its own to
+keep or drop, and the vocabulary is its own to fork.
+
+The point graduation preserves is the only one that mattered: **the pile still had to reach
+empty.**

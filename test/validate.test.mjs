@@ -652,3 +652,18 @@ test('a reason cannot restrict itself to a type nothing declares', () => {
 	const empty = LEDGER.replace('      about: item-state', '      about: item-state\n      types: []')
 	assert.ok(errorsFor(empty).some((e) => /`types` must be a non-empty list/.test(e)), errorsFor(empty).join('\n'))
 })
+
+test('the number check is for numbered external sources, and does not fire on a local kind', () => {
+	// `id_prefix` is also what makes teardown one grep, so a project that never had an
+	// upstream has every reason to declare one. A migrated pile is then many entries to one
+	// location — the source's number naming the group, the id's naming the item — and the
+	// check refused sixteen correct entries in a row while admitting the two that collided.
+	const migrated = LEDGER.replace('  - type: todo', '  - type: todo\n    id_prefix: q')
+		.replace('id: todo-1', 'id: q1-3')
+		.replace('id: todo-2', 'id: q1-4')
+		.replace(/source: local/g, 'source: TODO.md#Q1')
+	assert.deepEqual(errorsFor(migrated), [])
+	// The prefix half still holds — it is the half that has nothing to do with numbering.
+	const misprefixed = migrated.replace('id: q1-4', 'id: other-4')
+	assert.ok(errorsFor(misprefixed).some((e) => /id must start with `q`/.test(e)), errorsFor(misprefixed).join('\n'))
+})

@@ -112,8 +112,20 @@ export function isIsoDate(value) {
 	return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value))
 }
 
+/**
+ * Today, on the calendar of the machine writing the file.
+ *
+ * Not `toISOString()`, which is UTC. §3's dates are zoneless calendar dates, and the two
+ * date rules have deliberately asymmetric tolerance: a future `last_reviewed` gets one
+ * day of slack so that two machines in different zones can write the same ledger, while
+ * `last_reviewed >= first_seen` gets none. Reading the clock in UTC spends that slack on
+ * a single machine and then needs it in the direction it does not exist. West of
+ * Greenwich an ordinary working evening stamps tomorrow, which is the permanently-fresh
+ * signal §3 made illegal; east of it, entries seeded today cannot be transitioned today.
+ */
 export function todayIsoDate(now = new Date()) {
-	return now.toISOString().slice(0, 10)
+	const pad = (value) => String(value).padStart(2, '0')
+	return now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate())
 }
 
 /**

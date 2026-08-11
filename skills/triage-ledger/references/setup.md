@@ -60,11 +60,23 @@ document it should go in, even if that document does not exist yet.
 
 **You are not going to get the complete list here, and the format does not ask you to.**
 Write the reasons you can defend now — the ones you can draw a boundary around — and expect
-to add one later. The gap that stays invisible longest is a reason about *price*: for as
-long as "later" is an available answer, everything expensive parks instead of being
-dismissed, and no reason about subject matter or reproducibility can answer a question
-about cost. `retire --check` is usually the first thing that forces it, which is why
-[retire.md](retire.md) says the parked entries are where the missing reason shows up.
+to add one later. The gap that stays invisible longest is a reason for whatever "later" is
+currently answering: for as long as "later" is available, everything it covers parks
+instead of being dismissed, and no reason about subject matter or reproducibility can say
+why. Price is one instance — *this is not worth what it costs* — and it is not the only
+one. The other common instance is a question that cannot be answered **yet**, because the
+thing it would be reasoned against does not exist: a second consumer, a second engagement,
+a third package. Both are reasons about something other than the entry, which is why a
+vocabulary written against the entries misses them, and knowing which one you are missing
+decides where you go looking. `retire --check` is usually the first thing that forces it,
+which is why [retire.md](retire.md) says the parked entries are where the missing reason
+shows up.
+
+The unanswerable kind is worth writing early if you can, because it is the one that parks
+half a pile. It belongs in a `dismissed` reason and not in a parking status: the format
+records a trigger and does not schedule one (§7), so the honest move is to dismiss, and put
+what would reopen the question into the destination document. That document is then the
+thing doing the watching, and it is still there when the ledger is gone.
 
 A late reason is a normal event. What matters is that it arrives with a `describes`, an
 `about` and a destination like every other one — not that it was there on day one. What

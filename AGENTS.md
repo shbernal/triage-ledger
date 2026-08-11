@@ -73,6 +73,11 @@ it. A rule with no branches cannot be got wrong at entry 900.
 - Tests run on Windows as well as Linux. This is not optional: the known defects in the
   prior art are a literal `&` corrupting a write, and `gh` emitting CRLF that reaches a
   `summary:` value where it is invisible in a diff. Linux-only CI catches neither.
+  The clock belongs to the same family and is the one nothing about the machine reveals:
+  the dates in §3 are zoneless calendar dates, so anything reading the clock in UTC is
+  correct in one band and off by a day either side of it. A test that constructs the date
+  it expects the same way the code does proves nothing — set `TZ` and assert both
+  directions, the way `test/surgery.test.mjs` does.
 - `npm test` is bare `node --test`, with no path and no glob. Discovery is the point: any
   spelled-out form — a file list, or `node --test "test/**/*.test.mjs"` — lets a new test
   file be added and silently never run, which is the failure mode a test suite is least
