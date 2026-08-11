@@ -1,6 +1,6 @@
 {
   "name": "triage-ledger",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A backlog designed to end. Seed it, drain it, retire it.",
   "type": "module",
   "license": "MIT",

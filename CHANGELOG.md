@@ -7,6 +7,21 @@ invalid is a breaking change even when no CLI flag changed.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] — 2026-08-11
+
+No change to the spec, the CLI, or anything in the published tarball. The version exists
+because the way the tarball gets there changed, and that is not something you can verify
+without doing it once.
+
+### Changed
+
+- **Published from CI through npm trusted publishing**, rather than from a laptop holding a
+  long-lived token. The credential is now minted per-run through GitHub OIDC against a
+  named workflow file and expires when the run ends, so there is nothing left to leak
+  between releases. Practical consequence for anyone installing: this release carries a
+  provenance attestation, and `npm audit signatures` can tie the tarball to the commit and
+  the workflow that built it. `0.1.0` cannot make that claim, and never will be able to.
+
 ## [0.1.0] — 2026-08-11
 
 First release. The spec and the tooling that enforces it, pressure-tested against nine
@@ -50,4 +65,5 @@ Runs via `npx` on Node 22 or newer. Nothing enters your dependency tree.
   no longer the weapon, which is the part it owns. A project declaring no `types` on its
   own reason can still empty a pile in one command.
 
+[0.1.1]: https://github.com/shbernal/triage-ledger/releases/tag/v0.1.1
 [0.1.0]: https://github.com/shbernal/triage-ledger/releases/tag/v0.1.0
