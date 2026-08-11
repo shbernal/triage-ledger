@@ -25,6 +25,7 @@ import {
 	SPEC_FIELDS,
 	TERMINAL_CLASSES,
 	VOCABULARY_LISTS,
+	VOCABULARY_MEMBER_KEYS,
 	isRequiredAtClass,
 } from './model.mjs'
 import {
@@ -226,6 +227,18 @@ function validateVocabularyShape(report, index) {
 			if (name === null) report.error(label + ': `' + nameKey + '` must be a non-empty string')
 			else if (seen.has(name)) report.error(label + ': duplicate ' + nameKey + ' `' + name + '`')
 			else seen.add(name)
+
+			// The same rule as the one below, one level down, and the level that was missing.
+			// A key nothing reads is not inert here: a reason carrying `requires: [conclusion]`
+			// reads as a project that constrained something, and it constrained nothing.
+			const allowed = VOCABULARY_MEMBER_KEYS[listName]
+			for (const key of Object.keys(entry)) {
+				if (allowed.includes(key)) continue
+				report.error(
+					label + ': unknown key `' + key + '` on a ' + nameKey + '. The keys here are ' + allowed.join(', ') +
+						' — nothing else is read, so a rule written under a name the format does not define is decoration the next reader will take for a constraint'
+				)
+			}
 		})
 	}
 	// Four lists and only four (§3). The case this is really for is `feilds:` — `fields` is

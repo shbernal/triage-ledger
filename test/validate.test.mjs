@@ -402,6 +402,29 @@ test('there are four vocabulary lists and only four', () => {
 	assert.ok(errorsFor(invented).some((e) => e.includes('belongs under `fields`')), errorsFor(invented).join('\n'))
 })
 
+test('the keys inside a vocabulary entry are closed too, and that was the level with the hole', () => {
+	// The list of lists was closed and the members were not, which is the wrong way round:
+	// a fifth list is an obvious mistake, and an invented key on a reason is what a project
+	// writes when it is reaching for a constraint the format does not have. §6 says a
+	// destination owes a line per entry where the reason demands evidence, so `requires:` on
+	// that reason is the shape somebody will try. It validated, it did nothing, and nothing
+	// said so — the ledger then read as though the rule were being enforced.
+	const requires = LEDGER.replace('    - reason: no-repro\n', '    - reason: no-repro\n      requires: [conclusion]\n')
+	assert.ok(
+		errorsFor(requires).some((e) => e.includes('unknown key `requires` on a reason')),
+		errorsFor(requires).join('\n')
+	)
+
+	// Not about that one key. Any key at all, and on every list — `requires` at least exists
+	// elsewhere in the format, so a check that only knew about it would still let this pass.
+	const nonsense = LEDGER.replace('    - reason: no-repro\n', '    - reason: no-repro\n      xyzzy_not_a_real_key: [nonsense]\n')
+	assert.ok(errorsFor(nonsense).some((e) => e.includes('unknown key `xyzzy_not_a_real_key`')), errorsFor(nonsense).join('\n'))
+
+	// And the converse, which is what keeps this from being a rule that fires on legal
+	// ledgers: every key the readers actually read is accepted on its own list.
+	assert.deepEqual(errorsFor(LEDGER), [])
+})
+
 test('a project may not redeclare a field the spec governs', () => {
 	const text = LEDGER.replace(
 		'  evidence_kinds:',

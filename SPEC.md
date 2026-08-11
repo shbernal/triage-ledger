@@ -274,6 +274,21 @@ dismissal reason `describes` is a **MUST** — see §7, which is about what goes
 mappings and why this is the section that stops the whole method degenerating into "use
 YAML."
 
+**The keys inside a vocabulary entry are closed in the same way**, and one that is not on
+its list **MUST** be an error. On a status: `status`, `class`, `describes`, `requires`,
+`types`. On a dismissal reason: `reason`, `describes`, `about`, `retire_to`,
+`requires_evidence`, `types`. On an evidence kind: `kind` and `describes`. On a field:
+`field`, `describes`, `values`, `types`, `required_when_triaged`. §7 is what each of them
+means.
+
+The rule above catches a mistake; this one catches an intention, which is why it is worth
+the second sentence. A project writing `requires: [conclusion]` on a dismissal reason is
+reaching for a constraint this format does not have — §6's line-per-entry obligation is
+per *reason*, and nothing here attaches a field requirement to that axis (§7). Accepting
+the key in silence answers the reach with a decoration, and the ledger then reads as
+though the rule were being enforced — to its author first, and to every reader after.
+Refusing it says the true thing, which is that there is no such rule to write.
+
 Everywhere else `describes` is a **SHOULD**, and it is worth asking for exactly where an
 entry can be confused with a neighbour. For statuses the neighbourhood is the class:
 `deferred` next to `on-hold`, both `parked`, is where a project has to write the

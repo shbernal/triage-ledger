@@ -49,6 +49,25 @@ export const VOCABULARY_LISTS = {
 	fields: 'field',
 }
 
+/**
+ * The keys each kind of vocabulary entry may carry.
+ *
+ * Closed for the same reason the list of lists is closed, one level up (§3), and the hole
+ * was found by writing `requires: [conclusion]` on a dismissal reason: it validated, it did
+ * nothing, and nothing said so. A fifth list under `vocabulary:` is refused with a sentence
+ * explaining that there are four; an invented key *inside* a member used to pass in silence,
+ * which is worse, because it is where a project writes the constraint it wants and gets a
+ * decoration that the next reader takes for a rule.
+ *
+ * Adding a key here is adding a feature. That is the intended cost.
+ */
+export const VOCABULARY_MEMBER_KEYS = {
+	statuses: ['status', 'class', 'describes', 'requires', 'types'],
+	non_target_reasons: ['reason', 'describes', 'about', 'retire_to', 'requires_evidence', 'types'],
+	evidence_kinds: ['kind', 'describes'],
+	fields: ['field', 'describes', 'values', 'types', 'required_when_triaged'],
+}
+
 /** What a dismissal reason is *about*. This is what makes `retire_to: null` enforceable. */
 export const ABOUT_VALUES = ['item-state', 'project-policy']
 
