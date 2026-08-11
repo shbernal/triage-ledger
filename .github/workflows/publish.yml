@@ -1,0 +1,64 @@
+name: Publish
+
+# A tag is the only thing that publishes. There is no manual trigger and no token: the
+# registry is configured to trust *this file, in this repository*, and grants a short-lived
+# credential through OIDC at the moment it runs. That is the whole reason the filename is
+# load-bearing — renaming this file, or copying the job into another one, silently removes
+# the identity npm is checking for, and the publish fails with an authentication error that
+# says nothing about the rename. If it must move, change the trusted publisher on npmjs.com
+# in the same breath.
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  publish:
+    name: npm
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      # The one that matters. Without it the OIDC token is never minted and there is no
+      # fallback credential to fall back to.
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      # Trusted publishing landed in npm 11.5.1. The npm bundled with a Node release is
+      # pinned at that release's ship date, so a version old enough to lack the feature is
+      # a normal thing to be handed — and it fails by asking for a token rather than by
+      # naming the missing support.
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+
+      # The tag names a version; `package.json` names a version; nothing in git makes them
+      # agree. Publishing on a mismatch puts a release on npm that no tag points at, and
+      # the tag is the only record of what was built. Cheaper to refuse here.
+      - name: tag matches package version
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          packaged="$(node -p "require('./package.json').version")"
+          if [ "$tagged" != "$packaged" ]; then
+            echo "::error::tag $GITHUB_REF_NAME wants $tagged, package.json says $packaged"
+            exit 1
+          fi
+          echo "$packaged"
+
+      # `prepublishOnly` runs the suite again on the machine that publishes, which is the
+      # run that counts. This is the earlier, louder failure: it fails before the registry
+      # is ever contacted, so a broken build never gets as far as a half-finished publish.
+      - run: npm test
+      - run: npm run validate:templates
+
+      # No `--provenance` flag and no `NODE_AUTH_TOKEN`. Trusted publishing supplies the
+      # credential and attaches the provenance attestation on its own; passing either would
+      # be describing something npm already knows.
+      - run: npm publish
