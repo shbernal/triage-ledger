@@ -18,6 +18,7 @@
  * of a plausible-looking entry.
  */
 
+import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -94,6 +95,7 @@ Options
   --json                      Machine-readable output on every read command
   --dry-run                   Validate a mutation without writing
   --print-limit <n>           Rows to print; 0 prints all (default 50)
+  --version, -v               The version running; worth asking under a pinned @0.1
 
 Mapping records (import) — constants come from --type, --status and --set
   --map field={path}          Take this field from each record. {path} reads a key, and
@@ -236,6 +238,7 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 		json: false,
 		dryRun: false,
 		help: false,
+		version: false,
 		printLimit: 50,
 		filters: {},
 		fields: {},
@@ -262,6 +265,9 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 			i += 1
 		} else if (arg === '--help' || arg === '-h') {
 			options.help = true
+			i += 1
+		} else if (arg === '--version' || arg === '-v') {
+			options.version = true
 			i += 1
 		} else if (arg === '--json') {
 			options.json = true
@@ -421,6 +427,9 @@ export function parseArgs(argv, { today = todayIsoDate() } = {}) {
 	}
 	if (options.command === 'set-status') delete options.filters.reason
 
+	// `--version` carries no command, so it must be answered before the bare-invocation
+	// fallback below turns it into a help screen.
+	if (options.version) return options
 	if (options.command === null) options.help = true
 	else if (!(options.command in COMMANDS) && !options.help) throw new Error('unknown command: ' + options.command)
 	return options
@@ -433,8 +442,19 @@ function defaultIo() {
 	}
 }
 
+// Read at call time rather than at import, so a broken or missing package.json costs
+// `--version` and nothing else.
+function packageVersion() {
+	const manifest = fileURLToPath(new URL('../package.json', import.meta.url))
+	return JSON.parse(readFileSync(manifest, 'utf8')).version
+}
+
 export async function run(argv, io = defaultIo()) {
 	const options = parseArgs(argv)
+	if (options.version) {
+		io.stdout(packageVersion())
+		return 0
+	}
 	if (options.help) {
 		io.stdout(usage())
 		return 0

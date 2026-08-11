@@ -32,7 +32,9 @@
     "src/",
     "templates/",
     "SPEC.md",
+    "docs/adoption.md",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "engines": {
@@ -43,6 +45,7 @@
   },
   "scripts": {
     "test": "node --test",
-    "validate:templates": "node src/cli.mjs validate --ledger templates/backlog.yml && node src/cli.mjs validate --ledger templates/fork-triage.yml"
+    "validate:templates": "node src/cli.mjs validate --ledger templates/backlog.yml && node src/cli.mjs validate --ledger templates/fork-triage.yml",
+    "prepublishOnly": "npm test && npm run validate:templates"
   }
 }

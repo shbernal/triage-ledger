@@ -759,3 +759,19 @@ test('--distil says which of the two each destination owes, and the vocabulary d
 		assert.match(summary.out.join('\n'), /1 entry is still undecided and in neither count/)
 	})
 })
+
+test('--version answers with no ledger and no command, because npx pins a range', async () => {
+	// `npx triage-ledger@0.1` resolves to whatever 0.1.x the registry last published, so
+	// "which one am I running" is a question an adopter can actually need answered — and
+	// it has to be answerable from a directory with no ledger in it, before `init`.
+	const manifest = JSON.parse(
+		await fs.readFile(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')
+	)
+
+	for (const argv of [['--version'], ['-v'], ['status', '--version']]) {
+		const io = capture()
+		assert.equal(await run(argv, io.io), 0)
+		assert.deepEqual(io.out, [manifest.version])
+		assert.deepEqual(io.err, [])
+	}
+})
