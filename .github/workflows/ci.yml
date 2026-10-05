@@ -27,7 +27,7 @@ jobs:
         node: ['22', '24']
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v5
         with:
@@ -51,7 +51,7 @@ jobs:
     name: line endings
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: no CR bytes in tracked files
         run: |
           if git grep -Il $'\r' -- . ; then
