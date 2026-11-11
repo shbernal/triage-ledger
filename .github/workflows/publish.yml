@@ -35,7 +35,7 @@ jobs:
       # pinned at that release's ship date, so a version old enough to lack the feature is
       # a normal thing to be handed — and it fails by asking for a token rather than by
       # naming the missing support.
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@12.2.2
 
       - run: npm ci
 
