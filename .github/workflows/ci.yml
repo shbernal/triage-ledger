@@ -24,12 +24,12 @@ jobs:
         # The floor declared in `engines`, and current. The floor is the one that matters:
         # it is what an adopter running `npx` on an old LTS actually gets — and it has
         # already earned its place here by failing while `24` stayed green.
-        node: ['22', '24']
+        node: ['22', '26']
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -51,7 +51,7 @@ jobs:
     name: line endings
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: no CR bytes in tracked files
         run: |
           if git grep -Il $'\r' -- . ; then
@@ -59,3 +59,16 @@ jobs:
             exit 1
           fi
           echo "clean"
+
+  commit-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - uses: commit-check/commit-check-action@v2
+        with:
+          message: true
+          branch: false
