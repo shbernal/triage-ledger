@@ -65,9 +65,10 @@ it. A rule with no branches cannot be got wrong at entry 900.
 
 ## Conventions
 
-- ESM, Node ≥ 22, zero-to-minimal dependencies. A YAML parser is the only obvious one.
-  The floor was 20 until Node 20 went end-of-life; nothing in `src/` needs 22, so raise it
-  again only when something does or when 22 itself goes EOL.
+- ESM, Node ≥ 24, pnpm, zero-to-minimal dependencies. A YAML parser is the only obvious
+  one. CI tests the `engines` floor and current Node; the ruleset requires `ci-ok`, not the
+  matrix rows, so moving either version needs no ruleset edit. Publishing stays on the npm
+  CLI, which is what trusted publishing authenticates.
 - `--json` on every read command; `--dry-run` on every mutation; validate before write;
   refuse ambiguous ids rather than guessing.
 - Tests run on Windows as well as Linux. This is not optional: the known defects in the
@@ -78,7 +79,7 @@ it. A rule with no branches cannot be got wrong at entry 900.
   correct in one band and off by a day either side of it. A test that constructs the date
   it expects the same way the code does proves nothing — set `TZ` and assert both
   directions, the way `test/surgery.test.mjs` does.
-- `npm test` is bare `node --test`, with no path and no glob. Discovery is the point: any
+- `pnpm test` is bare `node --test`, with no path and no glob. Discovery is the point: any
   spelled-out form — a file list, or `node --test "test/**/*.test.mjs"` — lets a new test
   file be added and silently never run, which is the failure mode a test suite is least
   able to notice about itself. The cost is that everything under `test/` is discovered, so

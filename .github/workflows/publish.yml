@@ -25,11 +25,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Installs and tests with pnpm; the publish itself stays on the npm CLI, which is
+      # what trusted publishing authenticates.
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
-          cache: npm
+          cache: pnpm
 
       # Trusted publishing landed in npm 11.5.1. The npm bundled with a Node release is
       # pinned at that release's ship date, so a version old enough to lack the feature is
@@ -37,7 +41,7 @@ jobs:
       # naming the missing support.
       - run: npm install -g npm@12.2.2
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       # The tag names a version; `package.json` names a version; nothing in git makes them
       # agree. Publishing on a mismatch puts a release on npm that no tag points at, and
@@ -55,8 +59,8 @@ jobs:
       # `prepublishOnly` runs the suite again on the machine that publishes, which is the
       # run that counts. This is the earlier, louder failure: it fails before the registry
       # is ever contacted, so a broken build never gets as far as a half-finished publish.
-      - run: npm test
-      - run: npm run validate:templates
+      - run: pnpm test
+      - run: pnpm run validate:templates
 
       # No `--provenance` flag and no `NODE_AUTH_TOKEN`. Trusted publishing supplies the
       # credential and attaches the provenance attestation on its own; passing either would
