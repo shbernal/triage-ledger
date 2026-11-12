@@ -7,6 +7,18 @@ invalid is a breaking change even when no CLI flag changed.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] — 2026-11-12
+
+No change to the spec or the CLI's behaviour.
+
+### Changed
+
+- **Node 24 or newer.** `engines.node` moves from `>=22` to `>=24`, and CI tests 24 and
+  26. Nothing in `src/` needs 24; the floor follows the supported Node lines. On Node 22,
+  `npx` now warns about the engine mismatch.
+- The repository builds and tests with pnpm. The published tarball is still published by
+  the npm CLI through trusted publishing, with provenance.
+
 ## [0.1.1] — 2026-08-11
 
 No change to the spec, the CLI, or anything in the published tarball. The version exists
@@ -65,5 +77,6 @@ Runs via `npx` on Node 22 or newer. Nothing enters your dependency tree.
   no longer the weapon, which is the part it owns. A project declaring no `types` on its
   own reason can still empty a pile in one command.
 
+[0.1.2]: https://github.com/shbernal/triage-ledger/releases/tag/v0.1.2
 [0.1.1]: https://github.com/shbernal/triage-ledger/releases/tag/v0.1.1
 [0.1.0]: https://github.com/shbernal/triage-ledger/releases/tag/v0.1.0
