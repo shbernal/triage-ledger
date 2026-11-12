@@ -38,7 +38,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "dependencies": {
     "yaml": "^2.5.0"
@@ -46,6 +46,7 @@
   "scripts": {
     "test": "node --test",
     "validate:templates": "node src/cli.mjs validate --ledger templates/backlog.yml && node src/cli.mjs validate --ledger templates/fork-triage.yml",
-    "prepublishOnly": "npm test && npm run validate:templates"
-  }
+    "prepublishOnly": "pnpm test && pnpm run validate:templates"
+  },
+  "packageManager": "pnpm@12.18.0"
 }

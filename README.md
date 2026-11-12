@@ -82,7 +82,7 @@ apply to a fork of an abandoned renderer and to a solo project's `TODO.md` alike
 
 ## Nothing enters your dependency tree
 
-The CLI runs via `npx` on Node 22 or newer, pinned to a compatible range. There is no
+The CLI runs via `npx` on Node 24 or newer, pinned to a compatible range. There is no
 package to add and no lockfile churn — because a tool designed to be deleted should be easy
 to delete. The full integration surface is six rows, and it doubles as the removal checklist
 (`SPEC.md` §6). Installing the skill is the one row that is more than it looks: the

@@ -23,25 +23,28 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         # The floor declared in `engines`, and current. The floor is the one that matters:
         # it is what an adopter running `npx` on an old LTS actually gets — and it has
-        # already earned its place here by failing while `24` stayed green.
-        node: ['22', '26']
+        # already earned its place here by failing while current stayed green.
+        node: ['24', '26']
 
     steps:
       - uses: actions/checkout@v7
 
+      # Reads the version from `packageManager`.
+      - uses: pnpm/action-setup@v6
+
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm test
+      - run: pnpm test
 
       # The templates are shipped data, and `init` copies them verbatim. A template that
       # does not validate would hand every new adopter a broken ledger on their first
       # command, and nothing in the unit tests reads the files as a user would get them.
-      - run: npm run validate:templates
+      - run: pnpm run validate:templates
 
   self-check:
     # This repository defines the method; it does not use one. What it can check is that
@@ -72,3 +75,14 @@ jobs:
         with:
           message: true
           branch: false
+
+  # The one check the ruleset requires for the matrix, so moving a Node version does not
+  # mean editing the ruleset. A skipped or failed row fails it.
+  ci-ok:
+    if: always()
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - if: needs.test.result != 'success'
+        run: exit 1
+      - run: echo ok
